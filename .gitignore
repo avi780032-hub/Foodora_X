@@ -1,0 +1,5 @@
+node_modules/
+portfolio/frontend/dist/
+portfolio/frontend/.env
+portfolio/backend/.env
+npm-debug.log*

@@ -1,0 +1,72 @@
+import 'dotenv/config'
+import http from 'node:http'
+import express from 'express'
+import cors from 'cors'
+import jwt from 'jsonwebtoken'
+import { Server } from 'socket.io'
+import { connectDatabase } from './config/db.js'
+import User from './models/User.js'
+import authRoutes from './routes/auth.js'
+import foodRoutes from './routes/food.js'
+import donationRoutes from './routes/donations.js'
+import userRoutes from './routes/users.js'
+import adminRoutes from './routes/admin.js'
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET must be set to a secret of at least 32 characters in portfolio/backend/.env.')
+}
+
+const app = express()
+const server = http.createServer(app)
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map((origin) => origin.trim())
+const io = new Server(server, {
+  cors: { origin: allowedOrigins, methods: ['GET', 'POST', 'PATCH'] },
+})
+
+app.set('io', io)
+app.disable('x-powered-by')
+app.use(cors({ origin: allowedOrigins }))
+app.use(express.json({ limit: '1mb' }))
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'FoodoraX API' }))
+app.use('/api/auth', authRoutes)
+app.use('/api/food', foodRoutes)
+app.use('/api/donations', donationRoutes)
+app.use('/api/users', userRoutes)
+app.use('/api/admin', adminRoutes)
+app.use((_req, res) => res.status(404).json({ message: 'The requested API endpoint does not exist.' }))
+
+app.use((error, _req, res, _next) => {
+  console.error(error)
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ message: 'Request body must contain valid JSON.' })
+  if (error.type === 'entity.too.large') return res.status(413).json({ message: 'Request body is too large.' })
+  if (error.name === 'ValidationError') return res.status(400).json({ message: error.message })
+  if (error.code === 11000) return res.status(409).json({ message: 'An account with this email already exists.' })
+  if (error.name === 'CastError') return res.status(400).json({ message: 'The supplied ID or value is invalid.' })
+  res.status(500).json({ message: process.env.NODE_ENV === 'production' ? 'An unexpected server error occurred.' : error.message })
+})
+
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token
+    if (!token) return next(new Error('Authentication required'))
+    const { sub } = jwt.verify(token, process.env.JWT_SECRET)
+    const user = await User.findById(sub).select('_id active')
+    if (!user || !user.active) return next(new Error('Active account required'))
+    socket.userId = String(user._id)
+    next()
+  } catch {
+    next(new Error('Invalid or expired authentication token'))
+  }
+})
+
+io.on('connection', (socket) => {
+  socket.join(`user:${socket.userId}`)
+})
+
+const port = Number(process.env.PORT || 5000)
+connectDatabase().then(() => {
+  server.listen(port, () => console.log(`FoodoraX API listening on http://localhost:${port}`))
+}).catch((error) => {
+  console.error('Could not start FoodoraX:', error.message)
+  process.exitCode = 1
+})
