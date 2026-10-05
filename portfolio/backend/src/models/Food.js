@@ -25,6 +25,7 @@ const foodSchema = new mongoose.Schema({
     expiryTimeEntered: { type: Boolean, required: true },
   },
   status: { type: String, enum: ['listed', 'matched', 'accepted', 'pickup_started', 'delivered', 'cancelled'], default: 'listed', index: true },
+  expiryReminderSentAt: { type: Date, default: null },
 }, { timestamps: true })
 
 foodSchema.index({ location: '2dsphere' })

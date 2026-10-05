@@ -2,4 +2,5 @@ node_modules/
 portfolio/frontend/dist/
 portfolio/frontend/.env
 portfolio/backend/.env
+portfolio/backend/uploads/
 npm-debug.log*

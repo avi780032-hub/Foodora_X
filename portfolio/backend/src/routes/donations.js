@@ -42,7 +42,7 @@ router.patch('/:id/status', authenticate, authorize('ngo'), [
   ))
   if (!donation) return res.status(409).json({ message: 'This donation cannot be started. It may already have changed status.' })
   await Food.updateOne({ _id: donation.food._id }, { $set: { status: 'pickup_started' } })
-  emitDonation(req.app.get('io'), donation, `Pickup started for ${donation.food.name}.`)
+  await emitDonation(req.app.get('io'), donation, `Pickup started for ${donation.food.name}.`)
   res.json({ message: 'Pickup started. Ask the donor for the verification code when you arrive.', donation })
 }))
 
@@ -58,8 +58,31 @@ router.patch('/:id/verify', authenticate, authorize('ngo'), [
   donation.deliveredAt = new Date()
   await donation.save()
   await Food.updateOne({ _id: donation.food._id }, { $set: { status: 'delivered' } })
-  emitDonation(req.app.get('io'), donation, `${donation.food.name} was delivered. Thank you for making a difference!`)
+  await emitDonation(req.app.get('io'), donation, `${donation.food.name} was delivered. Thank you for making a difference!`)
   res.json({ message: 'Pickup verified. This food donation is now delivered!', donation })
+}))
+
+router.patch('/:id/pickup-time', authenticate, [
+  body('pickupTime').isISO8601().withMessage('Enter a valid pickup time.'),
+], asyncHandler(async (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) return res.status(400).json({ message: 'Enter a valid pickup time.', errors: validationError(errors) })
+  const pickupTime = new Date(req.body.pickupTime)
+  if (pickupTime <= new Date()) return res.status(400).json({ message: 'Pickup time must be in the future.' })
+  const donation = await populateDonation(Donation.findOne({
+    _id: req.params.id,
+    status: 'accepted',
+    $or: [{ donor: req.user._id }, { recipient: req.user._id }],
+  }))
+  if (!donation) return res.status(409).json({ message: 'Pickup time can only be changed for an accepted donation.' })
+  if (pickupTime >= new Date(donation.food.expiryTime)) {
+    return res.status(400).json({ message: 'Pickup time must be before the food expires.' })
+  }
+  donation.pickupTime = pickupTime
+  await donation.save()
+  await Food.updateOne({ _id: donation.food._id }, { $set: { pickupTime } })
+  await emitDonation(req.app.get('io'), donation, `Pickup time for ${donation.food.name} was changed to ${pickupTime.toLocaleString()}.`)
+  res.json({ message: 'Pickup time updated.', donation })
 }))
 
 export default router

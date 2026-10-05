@@ -5,6 +5,10 @@ import Food from '../models/Food.js'
 import Donation from '../models/Donation.js'
 import { authenticate, authorize } from '../middleware/auth.js'
 import { asyncHandler, emitDonation } from '../utils/http.js'
+import AuditLog from '../models/AuditLog.js'
+import { writeAudit } from '../utils/audit.js'
+import Notification from '../models/Notification.js'
+import { sendNotificationEmail } from '../services/email.js'
 
 const router = Router()
 router.use(authenticate, authorize('admin'))
@@ -24,6 +28,7 @@ router.patch('/users/:id/status', [
   const member = await User.findByIdAndUpdate(req.params.id, { $set: { active: req.body.active } }, { new: true })
     .select('name email role active verified')
   if (!member) return res.status(404).json({ message: 'Account not found.' })
+  await writeAudit(req.user._id, member.active ? 'account_activated' : 'account_deactivated', 'user', member._id, member.email)
   res.json({ message: `Account ${member.active ? 'reactivated' : 'deactivated'}.`, user: member })
 }))
 
@@ -49,8 +54,9 @@ router.patch('/food/:id/status', [
     { $set: { status: 'cancelled' } },
     { new: true },
   ).populate('food').populate('donor', 'name').populate('recipient', 'name')
-  if (donation) emitDonation(req.app.get('io'), donation, `The ${food.name} listing was cancelled by an administrator.`)
+  if (donation) await emitDonation(req.app.get('io'), donation, `The ${food.name} listing was cancelled by an administrator.`)
   else req.app.get('io').emit('food:updated', { foodId: String(food._id), status: food.status })
+  await writeAudit(req.user._id, 'food_cancelled', 'food', food._id, food.name)
   res.json({ message: 'Food listing cancelled.', food })
 }))
 
@@ -65,7 +71,11 @@ router.patch('/ngos/:id/verify', [
   const ngo = await User.findOneAndUpdate({ _id: req.params.id, role: 'ngo' }, { $set: update }, { new: true })
     .select('name email phone address role verified createdAt')
   if (!ngo) return res.status(404).json({ message: 'NGO account not found.' })
-  req.app.get('io').to(`user:${ngo._id}`).emit('notification', { message: 'Your organization has been verified. You can now accept food donations.' })
+  await writeAudit(req.user._id, 'ngo_verified', 'user', ngo._id, ngo.name)
+  const message = 'Your organization has been verified. You can now accept food donations.'
+  await Notification.create({ user: ngo._id, message, type: 'system' })
+  await sendNotificationEmail(ngo.email, 'FoodoraX organization verified', message)
+  req.app.get('io').to(`user:${ngo._id}`).emit('notification', { message, type: 'system' })
   res.json({ message: 'NGO verified successfully.', ngo })
 }))
 
@@ -90,6 +100,46 @@ router.get('/analytics', asyncHandler(async (_req, res) => {
       estimatedPeopleSupported: mealsRescued,
     },
   })
+}))
+
+router.get('/analytics/monthly', asyncHandler(async (_req, res) => {
+  const monthly = await Donation.aggregate([
+    { $match: { status: 'delivered', deliveredAt: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } } },
+    { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$deliveredAt' } }, donations: { $sum: 1 } } },
+    { $sort: { _id: 1 } },
+  ])
+  res.json({ monthly })
+}))
+
+router.get('/reports/:type.csv', asyncHandler(async (req, res) => {
+  const escapeCell = (value) => {
+    const text = String(value ?? '')
+    const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text
+    return `"${safe.replaceAll('"', '""')}"`
+  }
+  let header
+  let rows
+  if (req.params.type === 'food') {
+    const foods = await Food.find().populate('donor', 'name email').sort({ createdAt: -1 }).limit(10000).lean()
+    header = ['Food', 'Category', 'Quantity', 'Unit', 'Status', 'Pickup address', 'Expiry', 'Donor']
+    rows = foods.map((food) => [food.name, food.category, food.quantity, food.quantityUnit, food.status, food.address, food.expiryTime?.toISOString(), food.donor?.name])
+  } else if (req.params.type === 'donations') {
+    const donations = await Donation.find().populate('food', 'name quantity quantityUnit').populate('donor', 'name').populate('recipient', 'name').sort({ createdAt: -1 }).limit(10000).lean()
+    header = ['Food', 'Quantity', 'Donor', 'NGO', 'Status', 'Pickup time', 'Delivered at']
+    rows = donations.map((donation) => [donation.food?.name, donation.food?.quantity, donation.donor?.name, donation.recipient?.name, donation.status, donation.pickupTime?.toISOString(), donation.deliveredAt?.toISOString()])
+  } else if (req.params.type === 'audit') {
+    const logs = await AuditLog.find().populate('actor', 'name email').sort({ createdAt: -1 }).limit(10000).lean()
+    header = ['Time', 'Actor', 'Action', 'Target type', 'Target ID', 'Details']
+    rows = logs.map((log) => [log.createdAt.toISOString(), log.actor?.email, log.action, log.targetType, log.targetId, log.details])
+  } else return res.status(400).json({ message: 'Choose food, donations, or audit as the report type.' })
+  await writeAudit(req.user._id, 'report_exported', 'report', req.params.type, `${rows.length} rows`)
+  res.type('text/csv').attachment(`foodorax-${req.params.type}-${new Date().toISOString().slice(0, 10)}.csv`)
+  res.send([header, ...rows].map((row) => row.map(escapeCell).join(',')).join('\r\n'))
+}))
+
+router.get('/audit', asyncHandler(async (_req, res) => {
+  const logs = await AuditLog.find().populate('actor', 'name email').sort({ createdAt: -1 }).limit(200)
+  res.json({ logs })
 }))
 
 export default router

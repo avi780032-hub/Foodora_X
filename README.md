@@ -96,8 +96,10 @@ All endpoints are prefixed with `/api`. Authenticated routes accept `Authorizati
 | POST | `/auth/register` | Register as donor or NGO |
 | POST | `/auth/login` | Log in |
 | GET | `/auth/me` | Current account |
+| PATCH | `/auth/me` | Update contact details, pickup location and NGO matching preferences |
 | GET, POST | `/food` | Browse permitted listings / publish as donor |
-| GET | `/food/recommendations` | NGO ranked match list |
+| GET | `/food/recommendations` | NGO ranked match list with distance filters |
+| POST | `/food/upload-image` | Upload a JPG, PNG or WebP food photo (maximum 5 MB) |
 | GET | `/food/:id` | View a listing |
 | PATCH | `/food/:id/status` | Donor cancels an unclaimed listing |
 | POST | `/food/:id/accept` | Accept as a verified NGO; creates a pickup code |
@@ -105,12 +107,19 @@ All endpoints are prefixed with `/api`. Authenticated routes accept `Authorizati
 | GET | `/donations/:id` | Participant donation detail |
 | PATCH | `/donations/:id/status` | NGO starts pickup |
 | PATCH | `/donations/:id/verify` | NGO submits donor’s pickup code; marks delivered |
+| PATCH | `/donations/:id/pickup-time` | Donation participants reschedule an accepted pickup |
+| GET, PATCH | `/notifications` | View and mark in-app notifications read |
+| POST | `/reviews/donation/:id` | Leave a one-time review after a completed donation |
+| GET, POST, PATCH | `/recurring` | Manage weekly/monthly donation reminders |
 | GET | `/users` | Admin user management list |
 | GET | `/admin/users`, `/admin/ngos` | Admin account and verification lists |
 | PATCH | `/admin/users/:id/status` | Admin activates or deactivates a member |
 | PATCH | `/admin/ngos/:id/verify` | Verify an NGO and notify it |
 | PATCH | `/admin/food/:id/status` | Admin cancels an active listing |
 | GET | `/admin/analytics` | Counts and delivered food quantity |
+| GET | `/admin/analytics/monthly` | Delivered donation totals by month |
+| GET | `/admin/reports/:type.csv` | Export food, donation or audit CSV data |
+| GET | `/admin/audit` | View recorded administrator actions |
 | GET | `/health` | API health check |
 
 ## Implementation notes
@@ -119,10 +128,15 @@ All endpoints are prefixed with `/api`. Authenticated routes accept `Authorizati
 - Pickup codes are generated with a cryptographically secure random generator and are not exposed to the recipient through donation-history reads.
 - Food safety confirmations, pickup times, expiry times, role permissions, and request data are validated by the API.
 - Real-time `notification` events are sent to both donation participants; `food:updated` signals listing changes. Socket connections require the same JWT.
-- Coordinates use GeoJSON `[longitude, latitude]`. Current location is opt-in; distance matching uses the Haversine formula. NGO preferences, quantity needs and admin-assigned priority are included in the match score. Listing directions open OpenStreetMap, without a paid map key.
+- Notifications are stored in MongoDB and visible in the notification center. Optional email delivery uses SMTP; configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM` in `portfolio/backend/.env`. Without SMTP values, in-app notifications continue to work.
+- Coordinates use GeoJSON `[longitude, latitude]`. Location is opt-in and can be refreshed from the profile or nearby-food page; distance matching uses the Haversine formula and supports a radius filter. NGO preferences, quantity needs and admin-assigned priority are included in the match score. Listing directions open OpenStreetMap, without a paid map key.
+- Food photos can be uploaded to `portfolio/backend/uploads/` (JPG, PNG, WebP, 5 MB maximum). Keep this directory on persistent storage when deploying the backend; uploads are intentionally git-ignored.
+- Completed donations support one review per participant. Accepted pickups can be rescheduled by either participant. Admin actions are recorded in the audit log and can be exported.
+- Weekly/monthly recurring donation schedules send reminders to confirm food safety and create a fresh listing; they do not auto-publish food. Expiry reminders are checked every 30 minutes for listed food expiring within 24 hours.
+- The frontend includes installable PWA metadata and an offline shell cache. API/private data is never cached offline. Use the workspace language switch for Hindi/English labels; translations are progressively applied.
 - Environmental estimates are transparent demo estimates: 0.5 kg saved per delivered food quantity unit, with each delivered unit counted as one meal/person supported. They are not third-party audited metrics.
 - The homepage impact counters and testimonial are illustrative demo content; admin dashboard counts are calculated from the connected MongoDB data.
-- Food images are provided as image URLs; no upload service or paid storage credential is required.
+- Images may use a public URL or local upload; local image files are served by the backend.
 
 ## Troubleshooting
 

@@ -1,6 +1,9 @@
 import { Router } from 'express'
 import { body, query, validationResult } from 'express-validator'
-import { randomInt } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import multer from 'multer'
 import Food from '../models/Food.js'
 import Donation from '../models/Donation.js'
 import User from '../models/User.js'
@@ -9,6 +12,26 @@ import { asyncHandler, emitDonation, validationError } from '../utils/http.js'
 
 const router = Router()
 const categories = ['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other']
+const uploadsDirectory = fileURLToPath(new URL('../../uploads/', import.meta.url))
+fs.mkdirSync(uploadsDirectory, { recursive: true })
+const imageUpload = multer({
+  storage: multer.diskStorage({
+    destination: uploadsDirectory,
+    filename: (_req, file, callback) => {
+      const extensions = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }
+      callback(null, `${randomUUID()}${extensions[file.mimetype]}`)
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      const error = new Error('Upload a JPG, PNG, or WebP image (maximum 5 MB).')
+      error.code = 'INVALID_IMAGE_TYPE'
+      return callback(error)
+    }
+    callback(null, true)
+  },
+})
 const distanceKm = (a, b) => {
   if (!a?.coordinates || !b?.coordinates) return null
   const [lng1, lat1] = a.coordinates, [lng2, lat2] = b.coordinates
@@ -57,7 +80,15 @@ router.get('/', authenticate, [
   res.json({ foods })
 }))
 
-router.get('/recommendations', authenticate, authorize('ngo'), asyncHandler(async (req, res) => {
+router.get('/recommendations', authenticate, authorize('ngo'), [
+  query('minDistanceKm').optional().isFloat({ min: 0 }).withMessage('Minimum distance cannot be negative.'),
+  query('maxDistanceKm').optional().isFloat({ min: 0 }).withMessage('Maximum distance must be positive.'),
+], asyncHandler(async (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid distance filter.', errors: validationError(errors) })
+  if (req.query.minDistanceKm !== undefined && req.query.maxDistanceKm !== undefined && Number(req.query.maxDistanceKm) < Number(req.query.minDistanceKm)) {
+    return res.status(400).json({ message: 'Maximum distance must be greater than or equal to minimum distance.' })
+  }
   const filter = { status: 'listed', expiryTime: { $gt: new Date() } }
   if (req.query.category) {
     if (!categories.includes(req.query.category)) return res.status(400).json({ message: 'Choose a valid food category.' })
@@ -90,9 +121,25 @@ router.get('/recommendations', authenticate, authorize('ngo'), asyncHandler(asyn
     const deadlineScore = Math.min(20, hoursLeft * 2)
     const priorityScore = Math.min(10, req.user.priority * 2)
     return { ...food, distanceKm: distance, matchScore: Math.min(100, Math.round(distanceScore + quantityScore + categoryScore + deadlineScore + priorityScore)) }
+  }).filter((food) => {
+    const minDistance = req.query.minDistanceKm === undefined ? 0 : Number(req.query.minDistanceKm)
+    const maxDistance = req.query.maxDistanceKm === undefined ? Infinity : Number(req.query.maxDistanceKm)
+    if (food.distanceKm === null) return minDistance === 0
+    return food.distanceKm >= minDistance && food.distanceKm <= maxDistance
   }).sort((a, b) => b.matchScore - a.matchScore)
   res.json({ foods: recommended })
 }))
+
+router.post('/upload-image', authenticate, authorize('donor'), (req, res, next) => {
+  imageUpload.single('image')(req, res, (error) => {
+    if (error instanceof multer.MulterError || error?.code === 'INVALID_IMAGE_TYPE') {
+      return res.status(400).json({ message: error.message })
+    }
+    if (error) return next(error)
+    if (!req.file) return res.status(400).json({ message: 'Choose a JPG, PNG, or WebP image to upload.' })
+    res.status(201).json({ image: `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` })
+  })
+})
 
 router.post('/', authenticate, authorize('donor'), [
   body('name').trim().isLength({ min: 2, max: 120 }).withMessage('Food name must be 2–120 characters.'),
@@ -193,7 +240,7 @@ router.post('/:id/accept', authenticate, authorize('ngo'), asyncHandler(async (r
     .populate('donor', 'name email phone address')
     .populate('recipient', 'name email phone address')
   const io = req.app.get('io')
-  emitDonation(io, populated, `${req.user.name} accepted your ${food.name} donation.`)
+  await emitDonation(io, populated, `${req.user.name} accepted your ${food.name} donation.`)
   res.status(201).json({ message: 'Food accepted. Contact the donor to arrange pickup.', donation: populated })
 }))
 

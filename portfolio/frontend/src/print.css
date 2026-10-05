@@ -1,0 +1,34 @@
+@media print {
+  .sidebar,
+  .dashboard-topbar,
+  .report-actions,
+  .button,
+  .table-action,
+  .notification-center,
+  .language-toggle,
+  .pickup-time-editor,
+  .review-form {
+    display: none !important;
+  }
+
+  .dashboard-shell,
+  .dashboard-main {
+    display: block;
+    width: 100%;
+    margin: 0;
+  }
+
+  .dashboard-content {
+    padding: 0;
+  }
+
+  .dashboard-panel,
+  .metric-card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .table-wrap {
+    overflow: visible;
+  }
+}
