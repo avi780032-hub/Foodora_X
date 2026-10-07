@@ -8,14 +8,49 @@ import { asyncHandler, emitDonation } from '../utils/http.js'
 import AuditLog from '../models/AuditLog.js'
 import { writeAudit } from '../utils/audit.js'
 import Notification from '../models/Notification.js'
-import { sendNotificationEmail } from '../services/email.js'
+import { sendNotificationChannels } from '../services/email.js'
 
 const router = Router()
 router.use(authenticate, authorize('admin'))
 
 router.get('/users', asyncHandler(async (_req, res) => {
-  const users = await User.find().select('name email phone role address verified active createdAt').sort({ createdAt: -1 }).limit(500)
+  const users = await User.find().select('name email phone role address city verified active createdAt').sort({ createdAt: -1 }).limit(500)
   res.json({ users })
+}))
+
+router.get('/donors', asyncHandler(async (_req, res) => {
+  const [donors, summaries] = await Promise.all([
+    User.find({ role: 'donor' })
+      .select('name email phone whatsappNumber city address location verified active createdAt')
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean(),
+    Food.aggregate([
+      { $group: { _id: '$donor', listingCount: { $sum: 1 }, totalQuantity: { $sum: '$quantity' }, latestListingAt: { $max: '$createdAt' } } },
+    ]),
+  ])
+  const summaryByDonor = new Map(summaries.map((summary) => [String(summary._id), summary]))
+  res.json({
+    donors: donors.map((donor) => ({
+      ...donor,
+      ...(summaryByDonor.get(String(donor._id)) || { listingCount: 0, totalQuantity: 0, latestListingAt: null }),
+    })),
+  })
+}))
+
+router.get('/donors/:id/foods', [
+  param('id').isMongoId().withMessage('Invalid donor account ID.'),
+], asyncHandler(async (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg })
+  const donor = await User.findOne({ _id: req.params.id, role: 'donor' }).select('_id')
+  if (!donor) return res.status(404).json({ message: 'Donor account not found.' })
+  const records = await Food.find({ donor: donor._id })
+    .select('name category quantity quantityUnit city address location status preparedAt pickupTime expiryTime createdAt')
+    .sort({ createdAt: -1 })
+    .limit(501)
+    .lean()
+  res.json({ foods: records.slice(0, 500), hasMore: records.length > 500 })
 }))
 
 router.patch('/users/:id/status', [
@@ -74,7 +109,7 @@ router.patch('/ngos/:id/verify', [
   await writeAudit(req.user._id, 'ngo_verified', 'user', ngo._id, ngo.name)
   const message = 'Your organization has been verified. You can now accept food donations.'
   await Notification.create({ user: ngo._id, message, type: 'system' })
-  await sendNotificationEmail(ngo.email, 'FoodoraX organization verified', message)
+  await sendNotificationChannels({ email: ngo.email, phone: ngo.phone || ngo.whatsappNumber, subject: 'FoodoraX organization verified', message })
   req.app.get('io').to(`user:${ngo._id}`).emit('notification', { message, type: 'system' })
   res.json({ message: 'NGO verified successfully.', ngo })
 }))
@@ -120,9 +155,13 @@ router.get('/reports/:type.csv', asyncHandler(async (req, res) => {
   let header
   let rows
   if (req.params.type === 'food') {
-    const foods = await Food.find().populate('donor', 'name email').sort({ createdAt: -1 }).limit(10000).lean()
-    header = ['Food', 'Category', 'Quantity', 'Unit', 'Status', 'Pickup address', 'Expiry', 'Donor']
-    rows = foods.map((food) => [food.name, food.category, food.quantity, food.quantityUnit, food.status, food.address, food.expiryTime?.toISOString(), food.donor?.name])
+    const foods = await Food.find().populate('donor', 'name email phone city').sort({ createdAt: -1 }).limit(10000).lean()
+    header = ['Food', 'Category', 'Quantity', 'Unit', 'Status', 'Pickup address', 'City', 'Pickup coordinates', 'Expiry', 'Donor', 'Donor email', 'Donor phone']
+    rows = foods.map((food) => [
+      food.name, food.category, food.quantity, food.quantityUnit, food.status, food.address, food.city,
+      food.location?.coordinates?.join(', '), food.expiryTime?.toISOString(),
+      food.donor?.name, food.donor?.email, food.donor?.phone,
+    ])
   } else if (req.params.type === 'donations') {
     const donations = await Donation.find().populate('food', 'name quantity quantityUnit').populate('donor', 'name').populate('recipient', 'name').sort({ createdAt: -1 }).limit(10000).lean()
     header = ['Food', 'Quantity', 'Donor', 'NGO', 'Status', 'Pickup time', 'Delivered at']

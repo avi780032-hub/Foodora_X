@@ -6,6 +6,7 @@ import App from './App.jsx'
 import './index.css'
 import './features.css'
 import './print.css'
+import './community.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

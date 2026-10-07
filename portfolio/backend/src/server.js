@@ -19,7 +19,7 @@ import recurringRoutes from './routes/recurring.js'
 import Food from './models/Food.js'
 import Notification from './models/Notification.js'
 import RecurringDonation from './models/RecurringDonation.js'
-import { sendNotificationEmail } from './services/email.js'
+import { sendNotificationChannels } from './services/email.js'
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be set to a secret of at least 32 characters in portfolio/backend/.env.')
@@ -86,7 +86,7 @@ connectDatabase().then(() => {
       status: 'listed',
       expiryTime: { $gt: now, $lte: expiresBefore },
       expiryReminderSentAt: null,
-    }).populate('donor', 'email')
+    }).populate('donor', 'email phone whatsappNumber city')
     for (const food of expiring) {
       const claimed = await Food.updateOne(
         { _id: food._id, expiryReminderSentAt: null },
@@ -96,12 +96,17 @@ connectDatabase().then(() => {
       const message = `${food.name} expires within 24 hours. Please confirm pickup or update the listing.`
       await Notification.create({ user: food.donor._id, message, type: 'reminder' })
       io.to(`user:${food.donor._id}`).emit('notification', { message, type: 'reminder' })
-      await sendNotificationEmail(food.donor.email, 'FoodoraX expiry reminder', message)
+      await sendNotificationChannels({
+        email: food.donor.email,
+        phone: food.donor.phone || food.donor.whatsappNumber,
+        subject: 'FoodoraX expiry reminder',
+        message,
+      })
     }
   }
   const sendRecurringReminders = async () => {
     const now = new Date()
-    const due = await RecurringDonation.find({ active: true, nextReminderAt: { $lte: now } }).populate('donor', 'email')
+    const due = await RecurringDonation.find({ active: true, nextReminderAt: { $lte: now } }).populate('donor', 'email phone whatsappNumber city')
     for (const schedule of due) {
       const nextReminderAt = new Date(now)
       nextReminderAt.setDate(nextReminderAt.getDate() + (schedule.frequency === 'weekly' ? 7 : 30))
@@ -112,7 +117,12 @@ connectDatabase().then(() => {
       if (!claimed.modifiedCount) continue
       const message = `Time to confirm food safety and publish your ${schedule.frequency} ${schedule.name} donation.`
       await Notification.create({ user: schedule.donor._id, message, type: 'reminder' })
-      await sendNotificationEmail(schedule.donor.email, 'FoodoraX recurring donation reminder', message)
+      await sendNotificationChannels({
+        email: schedule.donor.email,
+        phone: schedule.donor.phone || schedule.donor.whatsappNumber,
+        subject: 'FoodoraX recurring donation reminder',
+        message,
+      })
       io.to(`user:${schedule.donor._id}`).emit('notification', { message, type: 'reminder' })
     }
   }

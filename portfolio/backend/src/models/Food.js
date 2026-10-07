@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 const foodSchema = new mongoose.Schema({
   donor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 120 },
+  city: { type: String, trim: true, maxlength: 80, default: '' },
   category: { type: String, required: true, trim: true, enum: ['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other'] },
   quantity: { type: Number, required: true, min: 1 },
   quantityUnit: { type: String, trim: true, enum: ['meals', 'kg', 'boxes', 'portions'], default: 'meals' },

@@ -11,8 +11,11 @@ const safeUser = (user) => ({
   name: user.name,
   email: user.email,
   phone: user.phone,
+  whatsappNumber: user.whatsappNumber,
+  city: user.city,
   role: user.role,
   active: user.active,
+  volunteer: user.volunteer,
   address: user.address,
   location: user.location,
   verified: user.verified,
@@ -26,15 +29,17 @@ router.post('/register', [
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Enter a name between 2 and 100 characters.'),
   body('email').trim().isEmail().withMessage('Enter a valid email address.').normalizeEmail(),
   body('password').isLength({ min: 8, max: 72 }).withMessage('Password must be between 8 and 72 characters.'),
-  body('role').isIn(['donor', 'ngo']).withMessage('Choose donor or NGO as your role.'),
+  body('role').isIn(['donor', 'ngo', 'volunteer']).withMessage('Choose donor, NGO, or volunteer as your role.'),
   body('phone').optional({ values: 'falsy' }).trim().isLength({ max: 30 }).withMessage('Phone number is too long.'),
+  body('whatsappNumber').optional({ values: 'falsy' }).trim().isLength({ max: 30 }).withMessage('WhatsApp number is too long.'),
+  body('city').optional({ values: 'falsy' }).trim().isLength({ max: 80 }).withMessage('City is too long.'),
   body('address').optional({ values: 'falsy' }).trim().isLength({ max: 240 }).withMessage('Address is too long.'),
   body('quantityNeeded').optional({ values: 'falsy' }).isInt({ min: 0, max: 100000 }).withMessage('Preferred quantity must be a whole number from 0 to 100000.'),
   body('preferredCategories').optional().isArray({ max: 6 }).withMessage('Choose up to 6 preferred categories.'),
 ], asyncHandler(async (req, res) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Please check the highlighted details.', errors: validationError(errors) })
-  const { name, email, password, phone = '', address = '', role, location, preferredCategories = [], quantityNeeded = 0 } = req.body
+  const { name, email, password, phone = '', whatsappNumber = '', city = '', address = '', role, location, preferredCategories = [], quantityNeeded = 0 } = req.body
   const validCategories = ['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other']
   if (role === 'ngo' && preferredCategories.some((category) => !validCategories.includes(category))) {
     return res.status(400).json({ message: 'Choose valid preferred food categories.' })
@@ -54,9 +59,10 @@ router.post('/register', [
   }
   if (await User.exists({ email })) return res.status(409).json({ message: 'An account with this email already exists.' })
   const user = await User.create({
-    name, email, password, phone, address, role,
+    name, email, password, phone, whatsappNumber, city, address, role,
     location: location?.coordinates?.length ? { type: 'Point', coordinates: location.coordinates.map(Number) } : undefined,
-    verified: role === 'donor',
+    verified: role === 'donor' || role === 'volunteer',
+    volunteer: role === 'volunteer',
     preferredCategories: role === 'ngo' ? preferredCategories : [],
     quantityNeeded: role === 'ngo' ? Number(quantityNeeded) : 0,
   })
@@ -85,6 +91,8 @@ router.get('/me', authenticate, (req, res) => res.json({ user: safeUser(req.user
 router.patch('/me', authenticate, [
   body('name').optional().trim().isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters.'),
   body('phone').optional().trim().isLength({ max: 30 }).withMessage('Phone number is too long.'),
+  body('whatsappNumber').optional().trim().isLength({ max: 30 }).withMessage('WhatsApp number is too long.'),
+  body('city').optional().trim().isLength({ max: 80 }).withMessage('City is too long.'),
   body('address').optional().trim().isLength({ max: 240 }).withMessage('Address is too long.'),
   body('quantityNeeded').optional().isInt({ min: 0, max: 100000 }).withMessage('Preferred quantity must be from 0 to 100000.'),
   body('preferredCategories').optional().isArray({ max: 6 }).withMessage('Choose up to 6 food categories.'),
@@ -111,13 +119,20 @@ router.patch('/me', authenticate, [
     location = coordinates.length ? { type: 'Point', coordinates: coordinates.map(Number) } : undefined
   }
   const updates = {}
-  for (const key of ['name', 'phone', 'address']) if (req.body[key] !== undefined) updates[key] = req.body[key]
-  if (location !== req.user.location || req.body.location !== undefined) updates.location = location
+  const unset = {}
+  for (const key of ['name', 'phone', 'whatsappNumber', 'city', 'address']) if (req.body[key] !== undefined) updates[key] = req.body[key]
+  if (req.body.location !== undefined) {
+    if (location) updates.location = location
+    else unset.location = 1
+  }
   if (req.user.role === 'ngo') {
     if (req.body.quantityNeeded !== undefined) updates.quantityNeeded = Number(req.body.quantityNeeded)
     if (req.body.preferredCategories !== undefined) updates.preferredCategories = req.body.preferredCategories
   }
-  const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true, runValidators: true })
+  const update = {}
+  if (Object.keys(updates).length) update.$set = updates
+  if (Object.keys(unset).length) update.$unset = unset
+  const user = await User.findByIdAndUpdate(req.user._id, update, { new: true, runValidators: true })
   res.json({ message: 'Profile updated successfully.', user: safeUser(user) })
 }))
 

@@ -67,6 +67,9 @@ router.get('/', authenticate, [
     if (!categories.includes(req.query.category)) return res.status(400).json({ message: 'Choose a valid food category.' })
     filter.category = req.query.category
   }
+  if (req.query.city) {
+    filter.city = new RegExp(`^${String(req.query.city).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+  }
   if (req.query.minQuantity) filter.quantity = { $gte: Number(req.query.minQuantity) }
   if (req.query.search) {
     const escaped = req.query.search.trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -93,6 +96,9 @@ router.get('/recommendations', authenticate, authorize('ngo'), [
   if (req.query.category) {
     if (!categories.includes(req.query.category)) return res.status(400).json({ message: 'Choose a valid food category.' })
     filter.category = req.query.category
+  }
+  if (req.query.city) {
+    filter.city = new RegExp(`^${String(req.query.city).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
   }
   if (req.query.minQuantity) {
     const minQuantity = Number(req.query.minQuantity)
@@ -156,6 +162,7 @@ router.post('/', authenticate, authorize('donor'), [
   const errors = validationResult(req)
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Please check the food listing details.', errors: validationError(errors) })
   const { name, category, quantity, quantityUnit, description, image, address, preparedAt, pickupTime, expiryTime, location, safetyChecklist } = req.body
+  const donorCity = req.user.city || ''
   const preparation = new Date(preparedAt), pickup = new Date(pickupTime), expiry = new Date(expiryTime), now = new Date()
   if (preparation > now || pickup < now || preparation > pickup || expiry <= pickup) {
     return res.status(400).json({ message: 'Preparation must be in the past and before pickup; pickup must be in the future and expiry must be after pickup.' })
@@ -180,6 +187,7 @@ router.post('/', authenticate, authorize('donor'), [
   }
   const food = await Food.create({
     donor: req.user._id, name, category, quantity, quantityUnit, description, image,
+    city: donorCity,
     address, preparedAt: preparation, pickupTime: pickup, expiryTime: expiry, safetyChecklist, location: validatedLocation,
   })
   const populated = await food.populate('donor', 'name verified address')

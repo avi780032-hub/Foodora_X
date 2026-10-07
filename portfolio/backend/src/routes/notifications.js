@@ -6,8 +6,11 @@ import { asyncHandler } from '../utils/http.js'
 const router = Router()
 
 router.get('/', authenticate, asyncHandler(async (req, res) => {
-  const notifications = await Notification.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(100).lean()
-  res.json({ notifications, unreadCount: notifications.filter((item) => !item.readAt).length })
+  const [notifications, unreadCount] = await Promise.all([
+    Notification.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(100).lean(),
+    Notification.countDocuments({ user: req.user._id, readAt: null }),
+  ])
+  res.json({ notifications, unreadCount })
 }))
 
 router.patch('/read-all', authenticate, asyncHandler(async (req, res) => {

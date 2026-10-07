@@ -108,10 +108,14 @@ All endpoints are prefixed with `/api`. Authenticated routes accept `Authorizati
 | PATCH | `/donations/:id/status` | NGO starts pickup |
 | PATCH | `/donations/:id/verify` | NGO submits donor’s pickup code; marks delivered |
 | PATCH | `/donations/:id/pickup-time` | Donation participants reschedule an accepted pickup |
-| GET, PATCH | `/notifications` | View and mark in-app notifications read |
+| GET | `/notifications` | View in-app notifications and unread count |
+| PATCH | `/notifications/read-all`, `/notifications/:id/read` | Mark notifications as read |
+| GET | `/reviews/donation/:id` | View participant reviews for a completed donation |
 | POST | `/reviews/donation/:id` | Leave a one-time review after a completed donation |
-| GET, POST, PATCH | `/recurring` | Manage weekly/monthly donation reminders |
+| GET, POST | `/recurring` | View or create weekly/monthly donation reminders |
+| PATCH | `/recurring/:id` | Pause or resume a donation reminder |
 | GET | `/users` | Admin user management list |
+| GET | `/users/:id/profile` | View a community member’s public profile and ratings |
 | GET | `/admin/users`, `/admin/ngos` | Admin account and verification lists |
 | PATCH | `/admin/users/:id/status` | Admin activates or deactivates a member |
 | PATCH | `/admin/ngos/:id/verify` | Verify an NGO and notify it |
@@ -129,7 +133,7 @@ All endpoints are prefixed with `/api`. Authenticated routes accept `Authorizati
 - Food safety confirmations, pickup times, expiry times, role permissions, and request data are validated by the API.
 - Real-time `notification` events are sent to both donation participants; `food:updated` signals listing changes. Socket connections require the same JWT.
 - Notifications are stored in MongoDB and visible in the notification center. Optional email delivery uses SMTP; configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM` in `portfolio/backend/.env`. Without SMTP values, in-app notifications continue to work.
-- Coordinates use GeoJSON `[longitude, latitude]`. Location is opt-in and can be refreshed from the profile or nearby-food page; distance matching uses the Haversine formula and supports a radius filter. NGO preferences, quantity needs and admin-assigned priority are included in the match score. Listing directions open OpenStreetMap, without a paid map key.
+- Coordinates use GeoJSON `[longitude, latitude]`. Location is opt-in and can be refreshed from the profile or nearby-food page; distance matching uses the Haversine formula and supports 10, 25, 50, 100 km or any-distance browsing. NGO preferences, quantity needs and admin-assigned priority are included in the match score. Listing directions open OpenStreetMap, without a paid map key.
 - Food photos can be uploaded to `portfolio/backend/uploads/` (JPG, PNG, WebP, 5 MB maximum). Keep this directory on persistent storage when deploying the backend; uploads are intentionally git-ignored.
 - Completed donations support one review per participant. Accepted pickups can be rescheduled by either participant. Admin actions are recorded in the audit log and can be exported.
 - Weekly/monthly recurring donation schedules send reminders to confirm food safety and create a fresh listing; they do not auto-publish food. Expiry reminders are checked every 30 minutes for listed food expiring within 24 hours.

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { divIcon } from 'leaflet'
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import { MapContainer, Marker, Popup, Polyline, TileLayer } from 'react-leaflet'
 import {
   ArrowDown, ArrowRight, ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown,
   CircleHelp, Clock3, Compass, CookingPot, Gift, HandHeart, Heart, Leaf, LogOut,
@@ -103,7 +103,7 @@ function Home() {
 function AuthPage({ mode, setUser }) {
   const register = mode === 'register'
   const [language, setLanguage] = useState(localStorage.getItem('foodorax-language') || 'en')
-  const [form, setForm] = useState({ name: '', email: '', password: '', phone: '', role: new URLSearchParams(window.location.search).get('role') || 'donor', address: '', latitude: '', longitude: '', quantityNeeded: '', preferredCategories: [] })
+  const [form, setForm] = useState({ name: '', email: '', password: '', phone: '', whatsappNumber: '', city: '', role: new URLSearchParams(window.location.search).get('role') || 'donor', address: '', latitude: '', longitude: '', quantityNeeded: '', preferredCategories: [] })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [ratingInfo, setRatingInfo] = useState(null)
@@ -128,7 +128,7 @@ function AuthPage({ mode, setUser }) {
     setBusy(true)
     try {
       const endpoint = register ? '/auth/register' : '/auth/login'
-      const payload = register ? { ...form, quantityNeeded: Number(form.quantityNeeded || 0), location: { type: 'Point', coordinates: form.longitude && form.latitude ? [Number(form.longitude), Number(form.latitude)] : [] } } : { email: form.email, password: form.password }
+      const payload = register ? { ...form, city: form.city.trim(), whatsappNumber: form.whatsappNumber.trim(), quantityNeeded: Number(form.quantityNeeded || 0), location: { type: 'Point', coordinates: form.longitude && form.latitude ? [Number(form.longitude), Number(form.latitude)] : [] } } : { email: form.email, password: form.password }
       const { data } = await api.post(endpoint, payload)
       localStorage.setItem('foodorax-token', data.token)
       setUser(data.user)
@@ -140,9 +140,9 @@ function AuthPage({ mode, setUser }) {
       <form onSubmit={submit} className="auth-form">
         {register && <label>{t('Your name', 'आपका नाम')}<input name="name" placeholder={t('e.g. Priya Sharma', 'जैसे: प्रिया शर्मा')} value={form.name} onChange={update} autoComplete="name" required /></label>}
         <label>{t('Email address', 'ईमेल पता')}<input name="email" type="email" placeholder="you@example.com" value={form.email} onChange={update} autoComplete="email" required /></label>
-        {register && <label>{t("I'm joining as", 'मैं जुड़ रहा/रही हूँ')}<select name="role" value={form.role} onChange={update}><option value="donor">{t('A food donor', 'खाद्य दाता')}</option><option value="ngo">{t('An NGO / recipient', 'NGO / प्राप्तकर्ता')}</option></select></label>}
+        {register && <label>{t("I'm joining as", 'मैं जुड़ रहा/रही हूँ')}<select name="role" value={form.role} onChange={update}><option value="donor">{t('A food donor', 'खाद्य दाता')}</option><option value="ngo">{t('An NGO / recipient', 'NGO / प्राप्तकर्ता')}</option><option value="volunteer">{t('A volunteer pickup partner', 'वॉलिंटियर पिकअप पार्टनर')}</option></select></label>}
         <label>{t('Password', 'पासवर्ड')}<input name="password" type="password" placeholder={register ? t('At least 8 characters', 'कम से कम 8 अक्षर') : t('Enter your password', 'अपना पासवर्ड डालें')} value={form.password} onChange={update} autoComplete={register ? 'new-password' : 'current-password'} minLength={8} required /></label>
-        {register && <><label>{t('Phone number', 'फ़ोन नंबर')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="phone" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={update} /></label><label>{t('Organization / pickup address', 'संस्था / पिकअप पता')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="address" placeholder={t('Area, city', 'इलाका, शहर')} value={form.address} onChange={update} /></label>{form.role === 'ngo' && <><label>{t('Meals your organization can use', 'आपकी संस्था को कितने भोजन चाहिए')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="quantityNeeded" type="number" min="0" placeholder="40" value={form.quantityNeeded} onChange={update} /></label><div className="category-preferences"><span>{t('Food preferences', 'भोजन की पसंद')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span></span><div>{['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other'].map((category) => <label key={category}><input type="checkbox" checked={form.preferredCategories.includes(category)} onChange={(e) => setForm((old) => ({ ...old, preferredCategories: e.target.checked ? [...old.preferredCategories, category] : old.preferredCategories.filter((item) => item !== category) }))} />{category}</label>)}</div></div></>}<button type="button" className={`location-button ${located ? 'location-found' : ''}`} onClick={locateMe}><MapPin size={16} />{located ? t('Location added — nearby matches enabled', 'लोकेशन जुड़ गई — पास के विकल्प सक्रिय') : t('Use my current location for nearby matches', 'पास के विकल्पों के लिए वर्तमान लोकेशन लें')}</button></>}
+        {register && <><label>{t('Phone number', 'फ़ोन नंबर')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="phone" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={update} /></label><label>{t('WhatsApp number', 'व्हाट्सऐप नंबर')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="whatsappNumber" type="tel" placeholder="+91 98765 43210" value={form.whatsappNumber} onChange={update} /></label><label>{t('City', 'शहर')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="city" placeholder={t('Bengaluru', 'बेंगलुरु')} value={form.city} onChange={update} /></label><label>{t('Organization / pickup address', 'संस्था / पिकअप पता')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="address" placeholder={t('Area, city', 'इलाका, शहर')} value={form.address} onChange={update} /></label>{form.role === 'ngo' && <><label>{t('Meals your organization can use', 'आपकी संस्था को कितने भोजन चाहिए')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="quantityNeeded" type="number" min="0" placeholder="40" value={form.quantityNeeded} onChange={update} /></label><div className="category-preferences"><span>{t('Food preferences', 'भोजन की पसंद')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span></span><div>{['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other'].map((category) => <label key={category}><input type="checkbox" checked={form.preferredCategories.includes(category)} onChange={(e) => setForm((old) => ({ ...old, preferredCategories: e.target.checked ? [...old.preferredCategories, category] : old.preferredCategories.filter((item) => item !== category) }))} />{category}</label>)}</div></div></>}<button type="button" className={`location-button ${located ? 'location-found' : ''}`} onClick={locateMe}><MapPin size={16} />{located ? t('Location added — nearby matches enabled', 'लोकेशन जुड़ गई — पास के विकल्प सक्रिय') : t('Use my current location for nearby matches', 'पास के विकल्पों के लिए वर्तमान लोकेशन लें')}</button></>}
         {error && <div className="form-error">{error}</div>}
         <button className="button button-dark auth-submit" disabled={busy}>{busy ? t('One moment…', 'एक क्षण…') : register ? t('Create my account', 'खाता बनाएँ') : t('Log in', 'लॉग इन')} <ArrowRight size={16} /></button>
       </form><div className="auth-switch">{register ? t('Already part of the movement?', 'पहले से हमारे साथ हैं?') : t('New to the movement?', 'हमसे पहली बार जुड़ रहे हैं?')} <Link to={register ? '/login' : '/register'}>{register ? t('Log in', 'लॉग इन') : t('Create an account', 'खाता बनाएँ')}</Link></div><div className="auth-safe"><ShieldCheck size={15} /> {t('Your details are safely encrypted.', 'आपकी जानकारी सुरक्षित रूप से एन्क्रिप्टेड है।')}</div></div></div></main>
@@ -216,14 +216,14 @@ function DashboardLayout({ user, logout, children, active }) {
     localStorage.setItem('foodorax-language', next)
     setLanguage(next)
   }
-  const items = user.role === 'admin' ? [['Overview', '/dashboard', Compass], ['Users', '/admin/users', Users], ['NGO verification', '/admin/ngos', ShieldCheck], ['Food listings', '/discover', Utensils], ['Audit log', '/admin/audit', ShieldCheck], ['My profile', '/profile', Users]] : user.role === 'donor' ? [['Overview', '/dashboard', Compass], ['My donations', '/dashboard?tab=donations', Gift], ['Add food', '/donate', Plus], ['My profile', '/profile', Users]] : [['Overview', '/dashboard', Compass], ['Find food', '/discover', Search], ['My pickups', '/dashboard?tab=pickups', PackageCheck], ['My profile', '/profile', Users]]
-  return <div className="dashboard-shell"><aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}><div className="sidebar-brand"><Brand light /><button className="icon-button sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X size={18} /></button></div><div className="sidebar-caption">{t('WORKSPACE', 'कार्यस्थल')}</div><nav className="sidebar-nav">{items.map(([label, path, Icon]) => <Link key={label} to={path} onClick={() => setMobileOpen(false)} className={active === label ? 'sidebar-active' : ''}><Icon size={18} />{t(label, ({ Overview: 'डैशबोर्ड', Users: 'उपयोगकर्ता', 'NGO verification': 'NGO सत्यापन', 'Food listings': 'खाद्य सूची', 'Audit log': 'ऑडिट लॉग', 'My profile': 'मेरी प्रोफ़ाइल', 'My donations': 'मेरे दान', 'Add food': 'खाना जोड़ें', 'Find food': 'खाना खोजें', 'My pickups': 'मेरी पिकअप' })[label] || label)}{label === 'NGO verification' && <span className="nav-count">!</span>}</Link>)}</nav><div className="sidebar-bottom"><div className="sidebar-help"><CircleHelp size={18} /><div><b>{t('Need a hand?', 'मदद चाहिए?')}</b><span>{t('We’re here for you', 'हम आपकी मदद के लिए हैं')}</span></div><ArrowUpRight size={14} /></div><button className="sidebar-user" onClick={() => navigate('/profile')}><span className="avatar sidebar-avatar">{user.name?.[0]?.toUpperCase()}</span><span><b>{user.name}</b><small>{user.role === 'ngo' ? t('Community partner', 'सामुदायिक भागीदार') : user.role === 'admin' ? t('Administrator', 'प्रशासक') : t('Food donor', 'खाद्य दाता')}</small></span><ChevronDown size={15} /></button><button className="sidebar-logout" onClick={logout}><LogOut size={15} /> {t('Log out', 'लॉग आउट')}</button></div></aside>
+  const items = user.role === 'admin' ? [['Overview', '/dashboard', Compass], ['Users', '/admin/users', Users], ['Donors', '/admin/donors', Gift], ['NGO verification', '/admin/ngos', ShieldCheck], ['Food listings', '/discover', Utensils], ['Audit log', '/admin/audit', ShieldCheck], ['My profile', '/profile', Users]] : user.role === 'donor' ? [['Overview', '/dashboard', Compass], ['My donations', '/dashboard?tab=donations', Gift], ['Add food', '/donate', Plus], ['My profile', '/profile', Users]] : [['Overview', '/dashboard', Compass], ['Find food', '/discover', Search], ['My pickups', '/dashboard?tab=pickups', PackageCheck], ['My profile', '/profile', Users]]
+  return <div className="dashboard-shell"><aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}><div className="sidebar-brand"><Brand light /><button className="icon-button sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X size={18} /></button></div><div className="sidebar-caption">{t('WORKSPACE', 'कार्यस्थल')}</div><nav className="sidebar-nav">{items.map(([label, path, Icon]) => <Link key={label} to={path} onClick={() => setMobileOpen(false)} className={active === label ? 'sidebar-active' : ''}><Icon size={18} />{t(label, ({ Overview: 'डैशबोर्ड', Users: 'उपयोगकर्ता', Donors: 'दाता', 'NGO verification': 'NGO सत्यापन', 'Food listings': 'खाद्य सूची', 'Audit log': 'ऑडिट लॉग', 'My profile': 'मेरी प्रोफ़ाइल', 'My donations': 'मेरे दान', 'Add food': 'खाना जोड़ें', 'Find food': 'खाना खोजें', 'My pickups': 'मेरी पिकअप' })[label] || label)}{label === 'NGO verification' && <span className="nav-count">!</span>}</Link>)}</nav><div className="sidebar-bottom"><div className="sidebar-help"><CircleHelp size={18} /><div><b>{t('Need a hand?', 'मदद चाहिए?')}</b><span>{t('We’re here for you', 'हम आपकी मदद के लिए हैं')}</span></div><ArrowUpRight size={14} /></div><button className="sidebar-user" onClick={() => navigate('/profile')}><span className="avatar sidebar-avatar">{user.name?.[0]?.toUpperCase()}</span><span><b>{user.name}</b><small>{user.role === 'ngo' ? t('Community partner', 'सामुदायिक भागीदार') : user.role === 'admin' ? t('Administrator', 'प्रशासक') : t('Food donor', 'खाद्य दाता')}</small></span><ChevronDown size={15} /></button><button className="sidebar-logout" onClick={logout}><LogOut size={15} /> {t('Log out', 'लॉग आउट')}</button></div></aside>
     <main className="dashboard-main"><header className="dashboard-topbar"><button className="icon-button dashboard-menu" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu /></button><span className="crumb">{t('Workspace', 'कार्यस्थल')} <span>/</span> {active}</span><div className="topbar-right"><button className="language-toggle" type="button" onClick={setLanguagePreference}><Languages size={15} />{language === 'en' ? 'हिन्दी' : 'English'}</button><NotificationCenter /><span className="topbar-date"><span className="live-dot" /> {t('All systems growing', 'सभी सिस्टम सक्रिय हैं')}</span><span className="topbar-avatar">{user.name?.[0]?.toUpperCase()}</span></div></header><div className="dashboard-content">{children}</div></main></div>
 }
 
 function ProfilePage({ user, setUser, logout }) {
   const [form, setForm] = useState({
-    name: user.name || '', phone: user.phone || '', address: user.address || '',
+    name: user.name || '', phone: user.phone || '', whatsappNumber: user.whatsappNumber || '', city: user.city || '', address: user.address || '',
     preferredCategories: user.preferredCategories || [], quantityNeeded: user.quantityNeeded || 0,
   })
   const [location, setLocation] = useState(user.location?.coordinates || [])
@@ -260,6 +260,8 @@ function ProfilePage({ user, setUser, logout }) {
       <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required minLength="2" maxLength="100" /></label>
       <label>Email<input value={user.email} disabled /></label>
       <label>Phone<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} maxLength="30" /></label>
+      <label>WhatsApp number<input value={form.whatsappNumber} onChange={(e) => setForm({ ...form, whatsappNumber: e.target.value })} maxLength="30" /></label>
+      <label>City<input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} maxLength="80" /></label>
       <label>Organization / pickup address<input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} maxLength="240" /></label>
       {user.role === 'ngo' && <><label>Meals your organization needs<input type="number" min="0" max="100000" value={form.quantityNeeded} onChange={(e) => setForm({ ...form, quantityNeeded: e.target.value })} /></label><div className="category-preferences"><span>Preferred food categories</span><div>{categories.map((category) => <label key={category}><input type="checkbox" checked={form.preferredCategories.includes(category)} onChange={(e) => setForm((old) => ({ ...old, preferredCategories: e.target.checked ? [...old.preferredCategories, category] : old.preferredCategories.filter((item) => item !== category) }))} />{category}</label>)}</div></div></>}
     </div><section className="form-section"><h2>Nearby location</h2><p>Coordinates are used to estimate food pickup distances and nearby matches.</p><p>{location.length === 2 ? `Location saved (${location[1].toFixed(4)}, ${location[0].toFixed(4)})` : 'No location saved'}</p><button className="button button-outline" type="button" onClick={useCurrentLocation}><Navigation size={15} /> Use my current location</button><button className="table-action" type="button" onClick={() => setLocation([])}>Clear location</button></section>
@@ -360,6 +362,39 @@ function MetricCard({ icon: Icon, label, value, note, tone = 'green' }) {
   return <article className="metric-card"><span className={`metric-icon ${tone}`}><Icon size={19} /></span><span className="metric-label">{label}</span><strong>{value ?? '—'}</strong><small>{note}</small></article>
 }
 
+function VolunteerPickupPanel({ user, donations }) {
+  const [volunteers, setVolunteers] = useState([])
+  const [selected, setSelected] = useState({})
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const load = async () => {
+    try {
+      const { data } = await api.get('/donations/volunteers', { params: { city: user.city || '' } })
+      setVolunteers(data.volunteers)
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { load() }, [user.city])
+  const assignVolunteer = async (donationId) => {
+    const volunteerId = selected[donationId]
+    if (!volunteerId) return
+    try {
+      await api.patch(`/donations/${donationId}/assign-volunteer`, { volunteerId })
+      setSelected((old) => ({ ...old, [donationId]: '' }))
+      setError('')
+      window.location.reload()
+    } catch (err) { setError(getErrorMessage(err)) }
+  }
+  const pending = donations.filter((item) => !['delivered', 'cancelled'].includes(item.status)).slice(0, 3)
+  return <section className="dashboard-panel volunteer-panel"><div className="panel-heading"><div><span className="eyebrow">VOLUME DELIVERY</span><h2>Volunteer pickup network</h2></div></div><p className="muted-copy">Reduce pickup delays by assigning nearby volunteers to live donation routes.</p>
+    {error && <p className="form-error">{error}</p>}
+    {loading ? <p className="muted-copy">Loading volunteers…</p> : pending.length ? pending.map((donation) => <div className="volunteer-assignment-row" key={donation._id}><div><b>{donation.food?.name || 'Donation'}</b><small>{donation.food?.city || user.city || 'Local city'} · {new Date(donation.pickupTime).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</small></div><div className="volunteer-assign"><select value={selected[donation._id] || ''} onChange={(event) => setSelected({ ...selected, [donation._id]: event.target.value })}><option value="">Select volunteer</option>{volunteers.map((volunteer) => <option key={volunteer._id} value={volunteer._id}>{volunteer.name} · {volunteer.city || 'Local city'}</option>)}</select><button className="table-action" onClick={() => assignVolunteer(donation._id)} disabled={!selected[donation._id]}>Assign</button></div></div>) : <p className="muted-copy">No active donation needs volunteer handoff right now.</p>}
+  </section>
+}
+
 function Dashboard({ user, logout }) {
   const [stats, setStats] = useState(null)
   const [foods, setFoods] = useState([])
@@ -374,14 +409,19 @@ function Dashboard({ user, logout }) {
   const activeLabel = isAdmin ? 'Overview' : currentTab ? (isDonor ? 'My donations' : 'My pickups') : 'Overview'
   const load = () => {
     setLoading(true); setError('')
-    const requests = user.role === 'admin' ? [api.get('/admin/analytics'), api.get('/admin/users'), api.get('/food'), api.get('/admin/analytics/monthly')]
+    const requests = user.role === 'admin' ? [api.get('/admin/analytics'), api.get('/donations'), api.get('/food'), api.get('/admin/analytics/monthly')]
       : [isDonor ? api.get('/food', { params: { mine: 'true' } }) : api.get('/food/recommendations'), api.get('/donations')]
     Promise.all(requests).then((results) => {
-      if (user.role === 'admin') { setStats(results[0].data.analytics); setFoods(results[2].data.foods); setDonations(results[1].data.users); setMonthly(results[3].data.monthly) }
+      if (user.role === 'admin') { setStats(results[0].data.analytics); setDonations(results[1].data.donations); setFoods(results[2].data.foods); setMonthly(results[3].data.monthly) }
       else { setFoods(results[0].data.foods); setDonations(results[1].data.donations) }
     }).catch((err) => setError(getErrorMessage(err))).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [user.role])
+  useEffect(() => {
+    if (!['admin', 'volunteer'].includes(user.role)) return undefined
+    const timer = window.setInterval(() => load(), 30000)
+    return () => window.clearInterval(timer)
+  }, [user.role, user._id])
   useEffect(() => {
     const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', { auth: { token: localStorage.getItem('foodorax-token') } })
     socket.on('notification', (item) => { setToast(item.message); load(); setTimeout(() => setToast(''), 4500) })
@@ -423,10 +463,18 @@ function Dashboard({ user, logout }) {
   const active = donations.filter((d) => !['delivered', 'cancelled'].includes(d.status))
   const done = donations.filter((d) => d.status === 'delivered')
   const rescued = done.reduce((sum, d) => sum + Number(d.food?.quantity || 0), 0)
+  const cityBreakdown = useMemo(() => {
+    const counts = {}
+    foods.forEach((food) => {
+      if (!food.city) return
+      counts[food.city] = (counts[food.city] || 0) + Number(food.quantity || 0)
+    })
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  }, [foods])
   const displayFoods = isAdmin ? foods : foods
   return <DashboardLayout user={user} logout={logout} active={activeLabel}>
     {toast && <div className="toast"><CheckCircle2 size={17} />{toast}<button onClick={() => setToast('')} aria-label="Close notification"><X size={16} /></button></div>}
-    <div className="dashboard-title-row"><div><div className="eyebrow">{isAdmin ? 'FOODORAX CONTROL ROOM' : `GOOD ${new Date().getHours() < 12 ? 'MORNING' : 'DAY'}, ${user.name.split(' ')[0].toUpperCase()}`}</div><h1>{isAdmin ? t('Impact at a glance.', 'आपका प्रभाव') : `${t('Let’s make today count', 'आज का दिन बेहतर बनाएं')}${user.name ? `, ${user.name.split(' ')[0]}` : ''}.`}</h1><p>{isAdmin ? t('A real-time view of your community’s food rescue.', 'आपके समुदाय के भोजन बचाव का ताज़ा दृश्य।') : isDonor ? t('Your surplus can be someone’s next warm meal.', 'आपका अतिरिक्त भोजन किसी का अगला भोजन बन सकता है।') : t('Find a fresh match for your community today.', 'आज अपने समुदाय के लिए ताज़ा भोजन खोजें।')}</p></div>{isAdmin && <div className="report-actions"><button className="button button-outline button-small" onClick={() => downloadReport('donations')}>Export donations CSV</button><button className="button button-outline button-small" onClick={() => window.print()}>Print / Save PDF</button><Link className="button button-outline button-small" to="/admin/audit">Audit log</Link></div>}{isDonor && <Link to="/donate" className="button button-dark"><Plus size={17} /> {t('Add surplus food', 'अतिरिक्त भोजन जोड़ें')}</Link>}{user.role === 'ngo' && <Link to="/discover" className="button button-dark"><Search size={16} /> {t('Find nearby food', 'पास का भोजन खोजें')}</Link>}</div>
+    <div className="dashboard-title-row"><div><div className="eyebrow">{isAdmin ? 'FOODORAX CONTROL ROOM' : `GOOD ${new Date().getHours() < 12 ? 'MORNING' : 'DAY'}, ${user.name.split(' ')[0].toUpperCase()}`}</div><h1>{isAdmin ? t('Impact at a glance.', 'आपका प्रभाव') : `${t('Let’s make today count', 'आज का दिन बेहतर बनाएं')}${user.name ? `, ${user.name.split(' ')[0]}` : ''}.`}</h1><p>{isAdmin ? t('A real-time view of your community’s food rescue.', 'आपके समुदाय के भोजन बचाव का ताज़ा दृश्य।') : isDonor ? t('Your surplus can be someone’s next warm meal.', 'आपका अतिरिक्त भोजन किसी का अगला भोजन बन सकता है।') : t('Find a fresh match for your community today.', 'आज अपने समुदाय के लिए ताज़ा भोजन खोजें।')}</p></div>{isAdmin && <div className="report-actions"><button className="button button-outline button-small" onClick={() => downloadReport('food')}>Export food CSV</button><button className="button button-outline button-small" onClick={() => downloadReport('donations')}>Export donations CSV</button><button className="button button-outline button-small" onClick={() => window.print()}>Print / Save PDF</button><Link className="button button-outline button-small" to="/admin/audit">Audit log</Link></div>}{isDonor && <Link to="/donate" className="button button-dark"><Plus size={17} /> {t('Add surplus food', 'अतिरिक्त भोजन जोड़ें')}</Link>}{user.role === 'ngo' && <Link to="/discover" className="button button-dark"><Search size={16} /> {t('Find nearby food', 'पास का भोजन खोजें')}</Link>}</div>
     {error && <div className="inline-error">{error} <button onClick={load}>Try again</button></div>}
     {loading ? <div className="dashboard-loading"><span className="spinner" />Loading your latest impact…</div> : <>
       <div className="metrics-grid">
@@ -434,9 +482,10 @@ function Dashboard({ user, logout }) {
           : isDonor ? <><MetricCard icon={Gift} label="Total donations" value={foods.length} note="Food shared with your community" /><MetricCard icon={Clock3} label="Active donations" value={foods.filter((f) => !['delivered', 'cancelled'].includes(f.status)).length} note="Making their way to a table" tone="orange" /><MetricCard icon={PackageCheck} label="Completed" value={done.length} note="Successful food handoffs" tone="blue" /><MetricCard icon={Leaf} label="Meals rescued" value={rescued.toLocaleString()} note="Thanks to your generosity" /></>
           : <><MetricCard icon={Compass} label="Nearby food" value={foods.length} note="Available listings in your area" /><MetricCard icon={Clock3} label="Active pickups" value={active.length} note="Accepted and on the move" tone="orange" /><MetricCard icon={PackageCheck} label="Completed pickups" value={done.length} note="Community meals delivered" tone="blue" /><MetricCard icon={Sparkles} label="Match readiness" value={user.verified ? 'Verified' : 'Pending'} note={user.verified ? 'Ready for smart matches' : 'Admin verification required'} /></>}
       </div>
-      {isAdmin && <><section className="admin-summary-row"><div className="summary-panel"><div className="panel-heading"><div><span className="eyebrow">NEEDS YOUR ATTENTION</span><h2>Partner verification</h2></div><Link to="/admin/ngos">Review NGOs <ArrowRight size={15} /></Link></div><div className="summary-highlight"><span className="summary-highlight-icon"><ShieldCheck size={20} /></span><div><b>{stats?.pendingNgos ?? 0} partners waiting</b><small>Verify trusted NGOs so they can start accepting food.</small></div><Link className="round-action" to="/admin/ngos"><ArrowRight size={17} /></Link></div></div><div className="summary-panel env-panel"><span className="eyebrow">YOUR COMMUNITY’S IMPACT</span><h2>{(stats?.estimatedKgSaved || 0).toLocaleString()} kg <span>food saved</span></h2><div className="progress-track"><i style={{ width: `${Math.min(100, (stats?.mealsRescued || 0) / 100)}%` }} /></div><div className="impact-mini-grid"><div><b>{stats?.donors ?? 0}</b><span>food donors</span></div><div><b>{stats?.completedDonations ?? 0}</b><span>completed rescues</span></div><div><b>{stats?.estimatedPeopleSupported ?? 0}</b><span>people supported</span></div></div></div></section><section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">RESCUE TRENDS</span><h2>Monthly delivered donations</h2></div></div><div className="monthly-bars">{monthly.map((month) => <div key={month._id}><span>{month.donations}</span><i style={{ height: `${Math.max(8, Math.min(100, month.donations * 8))}%` }} /><small>{month._id}</small></div>)}</div>{!monthly.length && <p className="muted-copy">Monthly rescue history will appear after completed donations.</p>}</section></>}
-      <section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">{isAdmin ? 'LIVE PLATFORM ACTIVITY' : isDonor ? 'YOUR FOOD, FINDING A HOME' : 'YOUR COMMUNITY PICKUPS'}</span><h2>{isAdmin ? 'Recent food listings' : isDonor ? 'Recent donations' : 'Donation tracker'}</h2></div><Link to={isDonor ? '/donate' : '/discover'}>{isDonor ? 'Add food' : 'Explore listings'} <ArrowRight size={15} /></Link></div>
-        {!displayFoods.length && !donations.length ? <div className="empty-state"><span><Utensils size={22} /></span><b>No activity just yet</b><p>{isDonor ? 'List your first surplus meal and let a nearby community enjoy it.' : 'Your accepted donations and pickup progress will show up here.'}</p><Link to={isDonor ? '/donate' : '/discover'} className="button button-dark">{isDonor ? 'Add your first listing' : 'Discover food'} <ArrowRight size={15} /></Link></div>
+      {isAdmin && <><section className="admin-summary-row"><div className="summary-panel"><div className="panel-heading"><div><span className="eyebrow">NEEDS YOUR ATTENTION</span><h2>Partner verification</h2></div><Link to="/admin/ngos">Review NGOs <ArrowRight size={15} /></Link></div><div className="summary-highlight"><span className="summary-highlight-icon"><ShieldCheck size={20} /></span><div><b>{stats?.pendingNgos ?? 0} partners waiting</b><small>Verify trusted NGOs so they can start accepting food.</small></div><Link className="round-action" to="/admin/ngos"><ArrowRight size={17} /></Link></div></div><div className="summary-panel env-panel"><span className="eyebrow">YOUR COMMUNITY’S IMPACT</span><h2>{(stats?.estimatedKgSaved || 0).toLocaleString()} kg <span>food saved</span></h2><div className="progress-track"><i style={{ width: `${Math.min(100, (stats?.mealsRescued || 0) / 100)}%` }} /></div><div className="impact-mini-grid"><div><b>{stats?.donors ?? 0}</b><span>food donors</span></div><div><b>{stats?.completedDonations ?? 0}</b><span>completed rescues</span></div><div><b>{stats?.estimatedPeopleSupported ?? 0}</b><span>people supported</span></div></div></div></section><section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">RESCUE TRENDS</span><h2>Monthly delivered donations</h2></div></div><div className="monthly-bars">{monthly.map((month) => <div key={month._id}><span>{month.donations}</span><i style={{ height: `${Math.max(8, Math.min(100, month.donations * 8))}%` }} /><small>{month._id}</small></div>)}</div>{!monthly.length && <p className="muted-copy">Monthly rescue history will appear after completed donations.</p>}</section><section className="dashboard-panel impact-analytics-panel"><div className="panel-heading"><div><span className="eyebrow">AI IMPACT MODEL</span><h2>City impact and match confidence</h2></div></div><div className="impact-city-list">{cityBreakdown.length ? cityBreakdown.map(([city, quantity]) => <div key={city} className="impact-city-row"><span>{city}</span><div className="impact-city-bar"><i style={{ width: `${Math.max(12, (quantity / (cityBreakdown[0][1] || 1)) * 100)}%` }} /></div><b>{quantity}</b></div>) : <p className="muted-copy">No city-level impact yet. Add food listings to start tracking your network.</p>}</div>      </section>
+      {(isAdmin || user.role === 'volunteer') && <VolunteerRouteMap donations={donations} user={user} />}
+      </>}
+            <section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">{isAdmin ? 'LIVE PLATFORM ACTIVITY' : isDonor ? 'YOUR FOOD, FINDING A HOME' : 'YOUR COMMUNITY PICKUPS'}</span><h2>{isAdmin ? 'Recent food listings' : isDonor ? 'Recent donations' : 'Donation tracker'}</h2></div><Link to={isDonor ? '/donate' : '/discover'}>{isDonor ? 'Add food' : 'Explore listings'} <ArrowRight size={15} /></Link></div>        {!displayFoods.length && !donations.length ? <div className="empty-state"><span><Utensils size={22} /></span><b>No activity just yet</b><p>{isDonor ? 'List your first surplus meal and let a nearby community enjoy it.' : 'Your accepted donations and pickup progress will show up here.'}</p><Link to={isDonor ? '/donate' : '/discover'} className="button button-dark">{isDonor ? 'Add your first listing' : 'Discover food'} <ArrowRight size={15} /></Link></div>
           : <div className="table-wrap"><table><thead><tr><th>{isAdmin ? 'FOOD LISTING' : 'DONATION'}</th><th>{isAdmin ? 'DONOR' : 'QUANTITY'}</th><th>{isAdmin ? 'CATEGORY' : 'PICKUP WINDOW'}</th><th>STATUS</th><th>{isAdmin ? '' : 'NEXT STEP'}</th></tr></thead><tbody>
             {(isAdmin ? displayFoods : isDonor ? displayFoods : donations).slice(0, 7).map((item) => {
               const donation = item.food ? item : isDonor ? donations.find((record) => record.food?._id === item._id) : null
@@ -446,6 +495,7 @@ function Dashboard({ user, logout }) {
               return <tr key={item._id}><td><div className="food-name-cell"><img src={food.image || foodPhotos.meals} alt="" /><span><b>{food.name}</b><small><MapPin size={12} />{food.address || food.location?.label || 'Pickup location shared after matching'}</small></span></div></td><td>{isAdmin ? food.donor?.name || '—' : `${food.quantity} ${food.quantityUnit || 'meals'}`}</td><td>{isAdmin ? food.category : <>{new Date(food.pickupTime).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{!isAdmin && donation && status === 'accepted' && <PickupTimeForm donation={donation} onUpdated={load} />}</>}</td><td><StatusPill status={status} /></td><td>{isAdmin && !['delivered', 'cancelled'].includes(status) && <button className="table-action cancel-listing" onClick={() => cancelListing(food._id)}>Cancel listing</button>}{isDonor && !donation && status === 'listed' && <button className="table-action cancel-listing" onClick={() => cancelListing(food._id)}>Cancel listing</button>}{!isAdmin && donation && status === 'accepted' && user.role === 'ngo' && <button className="table-action" onClick={() => updateStatus(donation._id, 'pickup_started')}>Start pickup <ArrowRight size={13} /></button>}{!isAdmin && donation && status === 'pickup_started' && user.role === 'ngo' && <div className="verify-inline"><input aria-label="Pickup code" placeholder="Donor’s 6-digit code" maxLength={6} value={codeInput[donation._id] || ''} onChange={(e) => setCodeInput({ ...codeInput, [donation._id]: e.target.value })} /><button onClick={() => updateStatus(donation._id, 'delivered', codeInput[donation._id])}>Verify</button></div>}{!isAdmin && donation && user.role === 'donor' && <span className="pickup-code">Code <b>{donation.verificationCode || '••••••'}</b></span>}{!isAdmin && donation && status === 'delivered' && <ReviewForm donation={donation} user={user} />}</td></tr>
             })}</tbody></table></div>}
       </section>
+      {!isAdmin && <VolunteerPickupPanel user={user} donations={donations} />}
       {!isAdmin && user.role === 'ngo' && <NearbyPanel user={user} foods={foods} />}
     </>}
   </DashboardLayout>
@@ -454,6 +504,34 @@ function Dashboard({ user, logout }) {
 function NearbyPanel({ user, foods }) {
   const listed = foods.slice(0, 4)
   return <section className="dashboard-panel nearby-panel"><div className="panel-heading"><div><span className="eyebrow">FRESH FOOD, CLOSE TO HOME</span><h2>Nearby pickup spots</h2></div><Link to="/discover">See all nearby <ArrowRight size={15} /></Link></div>{listed.length ? <div className="nearby-grid">{listed.map((food) => <div className="nearby-mini" key={food._id}><img src={food.image || foodPhotos.meals} alt="" /><div><b>{food.name}</b><small><MapPin size={12} />{relativeDistance(food, user)?.toFixed(1) || '—'} km away · {food.quantity} {food.quantityUnit || 'meals'}</small></div><StatusPill status={food.status} /></div>)}</div> : <p className="muted-copy">No nearby listings at this moment. Check back soon.</p>}</section>
+}
+
+function VolunteerRouteMap({ donations, user }) {
+  const routes = useMemo(() => donations.filter((donation) => {
+    const isLive = donation.pickupStatus && ['assigned', 'en_route', 'pickup_started'].includes(donation.pickupStatus)
+    return isLive && donation.volunteer && donation.food?.location?.coordinates?.length === 2
+  }), [donations])
+
+  if (!routes.length) return null
+
+  const mapCenter = (() => {
+    const first = routes[0]
+    const coordinates = first.food?.location?.coordinates || first.volunteer?.location?.coordinates
+    if (!coordinates?.length) return [28.6139, 77.2090]
+    return [coordinates[1], coordinates[0]]
+  })()
+
+  return <section className="dashboard-panel volunteer-map-panel"><div className="panel-heading"><div><span className="eyebrow">LIVE VOLUNTEER NETWORK</span><h2>Route tracking map</h2></div><span className="match-powered">{routes.length} active routes</span></div><MapContainer className="leaflet-map" center={mapCenter} zoom={11} scrollWheelZoom={false}><TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />{routes.map((donation) => {
+    const pickupCoords = donation.food?.location?.coordinates
+    const volunteerCoords = donation.volunteer?.location?.coordinates || donation.liveLocation || []
+    const routePoints = (donation.routePoints || []).filter((point) => Array.isArray(point.coordinates) && point.coordinates.length === 2)
+    const routeLatLng = routePoints.length ? routePoints.map((point) => [point.coordinates[1], point.coordinates[0]]) : []
+    return <>
+      {pickupCoords?.length === 2 && <Marker key={`${donation._id}-pickup`} position={[pickupCoords[1], pickupCoords[0]]} icon={foodPinIcon}><Popup><b>{donation.food?.name}</b><br />Pickup ready<br />{donation.food?.address}</Popup></Marker>}
+      {volunteerCoords.length === 2 && <Marker key={`${donation._id}-volunteer`} position={[volunteerCoords[1], volunteerCoords[0]]} icon={divIcon({ className: 'food-pin-icon volunteer-pin', html: '<span></span>', iconSize: [18, 18], iconAnchor: [9, 17] })}><Popup><b>{donation.volunteer?.name}</b><br />{donation.pickupStatus === 'en_route' ? 'On the way' : 'Assigned for pickup'}<br />{donation.volunteer?.city || 'Local volunteer'}</Popup></Marker>}
+      {routeLatLng.length > 1 && <Polyline key={`${donation._id}-route`} positions={routeLatLng} pathOptions={{ color: '#4caf50', weight: 4, opacity: 0.9 }} />}
+    </>
+  })}</MapContainer><div className="route-summary-grid">{routes.map((donation) => <div key={donation._id} className="route-summary-item"><b>{donation.food?.name}</b><small>{donation.volunteer?.name} · {donation.pickupStatus}</small></div>)}</div></section>
 }
 
 function DonatePage({ user, logout }) {
@@ -512,10 +590,16 @@ function matchScore(food, user) {
   const distance = relativeDistance(food, user)
   const km = distance ?? 12
   const q = Number(food.quantity || 0)
-  const quantityScore = q >= 25 ? 28 : q > 0 ? 15 : 0
   const timeLeft = (new Date(food.expiryTime) - Date.now()) / 36e5
-  const timeScore = timeLeft > 4 ? 25 : timeLeft > 0 ? 15 : 0
-  return Math.max(20, Math.round(100 - Math.min(km, 30) * 1.2 + quantityScore + timeScore + (user.verified ? 5 : 0)))
+  const cityAffinity = !user.city || !food.city ? 0 : user.city.toLowerCase() === food.city.toLowerCase() ? 15 : 0
+  const categoryAffinity = !user.preferredCategories?.length || !food.category ? 8 : user.preferredCategories.includes(food.category) ? 18 : 0
+  const donorTrust = food.donor?.verified ? 16 : 9
+  const quantityScore = q >= 25 ? 22 : q >= 10 ? 14 : q > 0 ? 8 : 0
+  const timeScore = timeLeft > 12 ? 18 : timeLeft > 4 ? 14 : timeLeft > 0 ? 8 : 0
+  const urgencyBonus = food.priority ? Math.min(10, food.priority * 2) : 0
+  const verificationBonus = user.verified ? 10 : 0
+  const rawScore = 100 - Math.min(km, 35) * 1.35 + quantityScore + timeScore + cityAffinity + categoryAffinity + donorTrust + urgencyBonus + verificationBonus
+  return Math.max(20, Math.min(99, Math.round(rawScore)))
 }
 
 function DiscoverPage({ user, logout }) {
@@ -575,6 +659,7 @@ function DiscoverPage({ user, logout }) {
     <div className="filter-bar"><label className="search-filter"><Search size={17} /><input placeholder={t('Search meals, ingredients, location…', 'भोजन, सामग्री या लोकेशन खोजें…')} value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} /></label><select aria-label={t('Food category', 'भोजन श्रेणी')} value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}><option value="">{t('All categories', 'सभी श्रेणियाँ')}</option>{['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other'].map((x) => <option key={x}>{x}</option>)}</select><label className="min-quantity"><span>{t('Min. quantity', 'न्यूनतम मात्रा')}</span><input type="number" min="1" placeholder={t('Any', 'कोई भी')} value={filters.minQuantity} onChange={(e) => setFilters({ ...filters, minQuantity: e.target.value })} /></label><label className="radius-filter"><span>{t('Within', 'दूरी')}</span><select aria-label={t('Maximum distance', 'अधिकतम दूरी')} value={radius} onChange={(e) => setRadius(e.target.value)}><option value="10">10 km</option><option value="25">25 km</option><option value="50">50 km</option><option value="100">100 km</option><option value="any">{t('Any distance', 'कोई भी दूरी')}</option></select></label><label className="radius-filter"><span>{t('Sort by', 'क्रम')}</span><select aria-label={t('Sort listings', 'सूची क्रम')} value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recommended">{t('Best match', 'बेहतरीन मेल')}</option><option value="distance">{t('Nearest', 'सबसे पास')}</option><option value="expiry">{t('Expiring soon', 'जल्दी समाप्त')}</option><option value="quantity">{t('Most food', 'अधिक मात्रा')}</option></select></label><button className="icon-button filter-refresh" onClick={fetchFoods} aria-label={t('Refresh listings', 'सूची रिफ्रेश करें')}><ArrowDown size={16} /></button></div>
     {error && <div className="inline-error">{error} <button onClick={fetchFoods}>Try again</button></div>}
     {loading ? <div className="dashboard-loading"><span className="spinner" />Finding the freshest nearby matches…</div> : matches.length ? <div className="food-grid">{matches.map((food, index) => <article className="food-card" key={food._id}><div className="food-image-wrap"><img src={food.image || foodPhotos.meals} alt={food.name} /><span className="food-fresh"><i /> Fresh listing</span>{user.role === 'ngo' && index < 3 && <span className="smart-match-tag"><Sparkles size={12} /> {food.matchScore}% match</span>}</div><div className="food-card-body"><div className="food-card-top"><span className="food-category">{food.category}</span><span className="food-distance"><MapPin size={13} />{(food.distanceKm ?? relativeDistance(food, user))?.toFixed(1) || 'Nearby'}{(food.distanceKm ?? relativeDistance(food, user)) !== null ? ' km' : ''}</span></div><h2>{food.name}</h2><p className="food-description">{food.description || 'Fresh surplus food ready to be shared with your community.'}</p><div className="food-details"><span><Utensils size={14} /><b>{food.quantity} {food.quantityUnit || 'meals'}</b></span><span><Clock3 size={14} />By {new Date(food.expiryTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div><div className="food-donor"><span className="donor-dot">{food.donor?.name?.[0] || 'F'}</span><span><b>{food.donor?.name || 'Local food donor'}</b><small><ShieldCheck size={12} /> Community partner</small></span></div><div className="food-card-actions"><a href={mapHref(food)} target="_blank" rel="noreferrer" className="map-link"><MapPin size={14} />Pickup location</a><button className="button button-dark button-small" disabled={user.role !== 'ngo' || !user.verified} onClick={() => accept(food._id)}>{user.role !== 'ngo' ? 'NGO partners only' : !user.verified ? 'Verification pending' : 'Accept food'} <ArrowRight size={14} /></button></div></div></article>)}</div> : <div className="empty-state discover-empty"><span><Compass size={23} /></span><b>No matching food listings right now</b><p>Try a different search or category, or come back soon. Great things are always being shared.</p>{user.role === 'donor' && <button onClick={() => navigate('/donate')} className="button button-dark">Share some surplus <ArrowRight size={15} /></button>}</div>}
+    <section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">TRUSTED COMMUNITY</span><h2>Local food partners</h2></div></div><div className="community-links">{[...new Map(matches.filter((food) => food.donor?._id).map((food) => [food.donor._id, food.donor])).values()].slice(0, 8).map((donor) => <Link key={donor._id} to={`/community/${donor._id}`} className="community-link"><span className="table-avatar">{donor.name?.[0]?.toUpperCase()}</span><span><b>{donor.name}</b><small>{donor.verified ? 'Verified food partner' : 'Community donor'}</small></span><ArrowRight size={14} /></Link>)}</div></section>
     <div className="map-section"><div><span className="eyebrow">GET THERE WITH EASE</span><h2>Good food is just around the corner.</h2><p>Pickup pins use OpenStreetMap, with no paid map key. Select a listing’s pickup link for directions.</p></div>{mapCenter ? <MapContainer className="leaflet-map" center={mapCenter} zoom={12} scrollWheelZoom={false}><TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />{mappedFoods.map((food) => <Marker key={food._id} position={[food.location.coordinates[1], food.location.coordinates[0]]} icon={foodPinIcon}><Popup><b>{food.name}</b><br />{food.quantity} {food.quantityUnit || 'meals'}<br />{food.address}</Popup></Marker>)}</MapContainer> : <div className="map-preview map-no-coordinates"><MapPin size={22} /><b>No pickup pins to show yet</b><span>Allow location access at sign-up and browse listings with mapped coordinates.</span></div>}</div>
   </DashboardLayout>
 }
@@ -592,6 +677,58 @@ function AdminUsersPage({ user, logout }) {
     } catch (err) { setError(getErrorMessage(err)) }
   }
   return <DashboardLayout user={user} logout={logout} active="Users"><div className="dashboard-title-row"><div><div className="eyebrow">GROWING GOOD, TOGETHER</div><h1>Community members.</h1><p>Manage accounts and keep our partner network safe and trusted.</p></div></div>{error && <div className="inline-error">{error} <button onClick={load}>Try again</button></div>}<section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">PLATFORM COMMUNITY</span><h2>Registered users</h2></div><button className="table-action" onClick={load}>Refresh <ArrowDown size={14} /></button></div>{loading ? <div className="dashboard-loading"><span className="spinner" />Loading community…</div> : <div className="table-wrap"><table><thead><tr><th>MEMBER</th><th>ROLE</th><th>LOCATION</th><th>JOINED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{users.map((member) => <tr key={member._id}><td><div className="food-name-cell"><span className="table-avatar">{member.name?.[0]?.toUpperCase()}</span><span><b>{member.name}</b><small>{member.email}</small></span></div></td><td>{member.role}</td><td>{member.address || '—'}</td><td>{new Date(member.createdAt).toLocaleDateString()}</td><td><StatusPill status={member.active === false ? 'inactive' : member.role === 'ngo' ? member.verified ? 'verified' : 'pending' : 'active'} /></td><td>{member.role !== 'admin' && <button className={`table-action ${member.active === false ? '' : 'cancel-listing'}`} onClick={() => toggleActive(member)}>{member.active === false ? 'Reactivate' : 'Deactivate'}</button>}</td></tr>)}</tbody></table></div>}</section></DashboardLayout>
+}
+
+function AdminDonorsPage({ user, logout }) {
+  const [donors, setDonors] = useState([])
+  const [selectedId, setSelectedId] = useState('')
+  const [foods, setFoods] = useState([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [foodsLoading, setFoodsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [hasMore, setHasMore] = useState(false)
+  const selectedDonor = donors.find((donor) => donor._id === selectedId)
+  const loadDonors = () => {
+    setLoading(true)
+    setError('')
+    api.get('/admin/donors').then(({ data }) => {
+      setDonors(data.donors)
+      setSelectedId((current) => current || data.donors[0]?._id || '')
+    }).catch((err) => setError(getErrorMessage(err))).finally(() => setLoading(false))
+  }
+  useEffect(() => { loadDonors() }, [])
+  useEffect(() => {
+    if (!selectedId) {
+      setFoods([])
+      return
+    }
+    setFoodsLoading(true)
+    api.get(`/admin/donors/${selectedId}/foods`)
+      .then(({ data }) => { setFoods(data.foods); setHasMore(data.hasMore) })
+      .catch((err) => setError(getErrorMessage(err)))
+      .finally(() => setFoodsLoading(false))
+  }, [selectedId])
+  const visibleDonors = donors.filter((donor) => `${donor.name} ${donor.email} ${donor.city} ${donor.address}`.toLowerCase().includes(search.toLowerCase()))
+  const locationText = (location) => location?.coordinates?.length === 2
+    ? `${location.coordinates[1].toFixed(5)}, ${location.coordinates[0].toFixed(5)}`
+    : 'No coordinates saved'
+  return <DashboardLayout user={user} logout={logout} active="Donors">
+    <div className="dashboard-title-row"><div><div className="eyebrow">DONOR DIRECTORY</div><h1>Food donors and their listings.</h1><p>Review donor profiles, contact details, and where each food listing was offered for pickup.</p></div><button className="button button-outline button-small" onClick={loadDonors}><ArrowDown size={14} /> Refresh</button></div>
+    {error && <div className="inline-error">{error} <button onClick={loadDonors}>Try again</button></div>}
+    <section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">REGISTERED DONORS</span><h2>{donors.length} donor accounts</h2></div><label className="search-filter"><Search size={16} /><input aria-label="Search donors" placeholder="Search name, email, or city" value={search} onChange={(event) => setSearch(event.target.value)} /></label></div>
+      {loading ? <div className="dashboard-loading"><span className="spinner" />Loading donor records…</div> : visibleDonors.length ? <div className="table-wrap"><table><thead><tr><th>DONOR</th><th>CITY / ADDRESS</th><th>LISTINGS</th><th>TOTAL QUANTITY</th><th>JOINED</th></tr></thead><tbody>{visibleDonors.map((donor) => <tr key={donor._id} className={selectedId === donor._id ? 'donor-row-selected' : ''}><td><button className="food-name-cell donor-select" onClick={() => setSelectedId(donor._id)}><span className="table-avatar">{donor.name?.[0]?.toUpperCase()}</span><span><b>{donor.name}</b><small>{donor.email}</small></span></button></td><td>{donor.city || '—'}<small className="cell-subtext">{donor.address || 'Address not provided'}</small></td><td>{donor.listingCount || 0}</td><td>{Number(donor.totalQuantity || 0).toLocaleString()}</td><td>{new Date(donor.createdAt).toLocaleDateString()}</td></tr>)}</tbody></table></div> : <div className="empty-state"><b>No donors found</b><p>{search ? 'Try a different search term.' : 'Donor accounts will appear here when they register.'}</p></div>}
+    </section>
+    {selectedDonor && <><section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">DONOR PROFILE</span><h2>{selectedDonor.name}</h2></div><StatusPill status={selectedDonor.active === false ? 'inactive' : 'active'} /></div><div className="impact-mini-grid"><div><b>{selectedDonor.email}</b><span>Email</span></div><div><b>{selectedDonor.phone || '—'}</b><span>Phone</span></div><div><b>{selectedDonor.whatsappNumber || '—'}</b><span>WhatsApp</span></div><div><b>{selectedDonor.city || '—'}</b><span>City</span></div><div><b>{selectedDonor.address || '—'}</b><span>Profile address</span></div><div><b>{locationText(selectedDonor.location)}</b><span>Saved profile coordinates</span></div></div></section>
+      <section className="dashboard-panel"><div className="panel-heading"><div><span className="eyebrow">DONATION HISTORY</span><h2>Food listed by {selectedDonor.name}</h2></div><span className="review-count">{selectedDonor.listingCount || 0} total listings</span></div>
+        {foodsLoading ? <div className="dashboard-loading"><span className="spinner" />Loading food history…</div> : foods.length ? <div className="table-wrap"><table><thead><tr><th>FOOD</th><th>QUANTITY</th><th>PICKUP LOCATION</th><th>CREATED</th><th>STATUS</th></tr></thead><tbody>{foods.map((food) => {
+          const coordinates = food.location?.coordinates
+          const mapUrl = coordinates?.length === 2 ? `https://www.openstreetmap.org/?mlat=${coordinates[1]}&mlon=${coordinates[0]}#map=15/${coordinates[1]}/${coordinates[0]}` : ''
+          return <tr key={food._id}><td><div className="food-name-cell"><span><b>{food.name}</b><small>{food.category} · {food.city || selectedDonor.city || 'City not provided'}</small></span></div></td><td>{food.quantity} {food.quantityUnit || 'meals'}</td><td>{food.address || 'Address not provided'}{mapUrl && <small className="cell-subtext"><a href={mapUrl} target="_blank" rel="noreferrer">View pickup on map</a></small>}</td><td>{new Date(food.createdAt).toLocaleString()}</td><td><StatusPill status={food.status} /></td></tr>
+        })}</tbody></table></div> : <div className="empty-state"><b>No food listings yet</b><p>This donor has not published any food listings.</p></div>}
+        {hasMore && <p className="muted-copy">Showing the latest 500 food listings for this donor.</p>}
+      </section></>}
+  </DashboardLayout>
 }
 
 function AdminNgosPage({ user, logout }) {
@@ -645,6 +782,7 @@ export default function App() {
       <Route path="/community/:id" element={<Protected user={user} loading={loading}><PublicProfilePage user={user} logout={logout} /></Protected>} />
       <Route path="/profile" element={<Protected user={user} loading={loading}><ProfilePage user={user} setUser={setUser} logout={logout} /></Protected>} />
       <Route path="/admin/users" element={<Protected user={user} loading={loading}><AdminOnly user={user}><AdminUsersPage user={user} logout={logout} /></AdminOnly></Protected>} />
+      <Route path="/admin/donors" element={<Protected user={user} loading={loading}><AdminOnly user={user}><AdminDonorsPage user={user} logout={logout} /></AdminOnly></Protected>} />
       <Route path="/admin/ngos" element={<Protected user={user} loading={loading}><AdminOnly user={user}><AdminNgosPage user={user} logout={logout} /></AdminOnly></Protected>} />
       <Route path="/admin/audit" element={<Protected user={user} loading={loading}><AdminOnly user={user}><AdminAuditPage user={user} logout={logout} /></AdminOnly></Protected>} />
       <Route path="*" element={<main className="not-found"><span className="eyebrow">THAT’S A LITTLE TOO FAR</span><h1>We can’t find that page.</h1><Link className="button button-dark" to="/">Back to home <ArrowRight size={15} /></Link></main>} />
