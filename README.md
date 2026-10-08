@@ -76,6 +76,20 @@ Requirements: Node.js 20+ and MongoDB 6+ (local MongoDB or a MongoDB Atlas conne
 
    The seed command requires an admin password of at least 12 characters. It creates the account if it does not exist and safely updates the password if it is already an administrator.
 
+## Deploy to Vercel
+
+Vercel hosts the frontend; deploy the Express backend separately to a Node.js host and use a reachable MongoDB database. Configure these environment variables before deploying:
+
+- **Vercel frontend project** (set the project root to `portfolio/frontend`):
+  - `VITE_API_URL=https://<your-backend-host>/api`
+  - `VITE_SOCKET_URL=https://<your-backend-host>` (Socket.IO host, without `/api`)
+- **Backend host**:
+  - `CLIENT_URL=https://<your-vercel-domain>`; add any Vercel preview origins as comma-separated exact origins if previews need API access.
+  - `MONGO_URI=<your-production-mongodb-uri>`
+  - `JWT_SECRET=<private-random-secret-at-least-32-characters>`
+
+Vite embeds `VITE_*` values at build time, so redeploy the frontend after changing them. Check `https://<your-backend-host>/api/health` returns `{"status":"ok","service":"FoodoraX API"}` before testing login. Do not use `localhost` as the Vercel API URL: it refers to the visitor's own computer.
+
 ## Demo walkthrough
 
 1. Register a **donor** account and optionally use the location button to attach nearby coordinates.
@@ -147,4 +161,4 @@ All endpoints are prefixed with `/api`. Authenticated routes accept `Authorizati
 - **MongoDB connection error:** ensure MongoDB is running or `MONGO_URI` is a reachable Atlas URI; check the Atlas network allowlist if applicable.
 - **NGO cannot accept food:** log in as an admin and verify the NGO first.
 - **Nearby distance is missing:** allow browser location access during registration; without coordinates, recommendations remain ranked using quantity, deadline, category and partner priority.
-- **Frontend cannot reach the API:** confirm the backend health URL and set `VITE_API_URL` / `VITE_SOCKET_URL` in `portfolio/frontend/.env` if using non-default ports or hosts.
+- **Frontend cannot reach the API:** confirm the deployed backend health URL, set `VITE_API_URL` / `VITE_SOCKET_URL` in Vercel project settings, allow the deployed frontend origin with backend `CLIENT_URL`, then redeploy the frontend.
