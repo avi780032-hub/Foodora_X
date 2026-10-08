@@ -7,7 +7,7 @@ import {
   ArrowDown, ArrowRight, ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown,
   CircleHelp, Clock3, Compass, CookingPot, Gift, HandHeart, Heart, Leaf, LogOut,
   MapPin, Menu, PackageCheck, Plus, Search, ShieldCheck, Sparkles, Users, Utensils,
-  X, Zap, Star, Navigation, Languages,
+  X, Zap, Star, Navigation, Languages, Eye, EyeOff,
 } from 'lucide-react'
 import api, { getErrorMessage } from './api'
 
@@ -60,7 +60,7 @@ function Header({ user, logout }) {
     <nav className={`nav-links ${menuOpen ? 'nav-open' : ''}`}>{links.map(([label, to]) => <Link to={to} key={label} onClick={() => setMenuOpen(false)}>{label}</Link>)}</nav>
     <div className="nav-actions">
       <button className="language-toggle" type="button" onClick={toggleLanguage}>{language === 'en' ? 'हिन्दी' : 'English'}</button>
-      {user ? <><button className="avatar" onClick={() => navigate('/dashboard')}>{user.name?.[0]?.toUpperCase()}</button><button className="text-button logout-button" onClick={logout}><LogOut size={16} /> {t('Log out', 'लॉग आउट')}</button></>
+      {user ? <><button className="avatar" aria-label={t('Open my profile', 'मेरी प्रोफ़ाइल खोलें')} title={t('My profile', 'मेरी प्रोफ़ाइल')} onClick={() => navigate('/profile')}>{user.name?.[0]?.toUpperCase()}</button><button className="text-button logout-button" onClick={logout}><LogOut size={16} /> {t('Log out', 'लॉग आउट')}</button></>
         : <><Link className="nav-login" to="/login">{t('Log in', 'लॉग इन')}</Link><Link className="button button-dark button-small" to="/register">{t('Join the movement', 'हमसे जुड़ें')} <ArrowRight size={15} /></Link></>}
       <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button>
     </div>
@@ -106,7 +106,7 @@ function AuthPage({ mode, setUser }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', phone: '', whatsappNumber: '', city: '', role: new URLSearchParams(window.location.search).get('role') || 'donor', address: '', latitude: '', longitude: '', quantityNeeded: '', preferredCategories: [] })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [ratingInfo, setRatingInfo] = useState(null)
+  const [showPassword, setShowPassword] = useState(false)
   const [located, setLocated] = useState(false)
   const navigate = useNavigate()
   const update = (event) => setForm({ ...form, [event.target.name]: event.target.value })
@@ -132,7 +132,29 @@ function AuthPage({ mode, setUser }) {
       const { data } = await api.post(endpoint, payload)
       localStorage.setItem('foodorax-token', data.token)
       setUser(data.user)
-      navigate('/dashboard')
+      navigate(register ? '/profile' : '/dashboard')
+    } catch (err) { setError(getErrorMessage(err)) } finally { setBusy(false) }
+  }
+  const createDemoAccount = async () => {
+    setError('')
+    setBusy(true)
+    const demoId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const roleName = form.role === 'ngo' ? 'Recipient' : form.role === 'volunteer' ? 'Volunteer' : 'Donor'
+    try {
+      const { data } = await api.post('/auth/register', {
+        name: `Demo ${roleName}`,
+        email: `demo-${form.role}-${demoId}@example.test`,
+        password: `FoodoraX-Demo-${demoId}`,
+        role: form.role,
+        city: 'Bengaluru',
+        address: 'FoodoraX demo location',
+        quantityNeeded: form.role === 'ngo' ? 20 : 0,
+        preferredCategories: form.role === 'ngo' ? ['Prepared meals'] : [],
+        location: { type: 'Point', coordinates: [] },
+      })
+      localStorage.setItem('foodorax-token', data.token)
+      setUser(data.user)
+      navigate('/profile')
     } catch (err) { setError(getErrorMessage(err)) } finally { setBusy(false) }
   }
   return <main className="auth-layout"><div className="auth-story"><Brand light /><div className="auth-story-content"><span className="eyebrow">{t('A LITTLE GOOD GOES A LONG WAY', 'छोटी सी मदद, बड़ा बदलाव')}</span><h1>{t('One meal can', 'एक भोजन')}<br />{t('change a day.', 'दिन बदल सकता है।')}</h1><p>{t('Join a growing community turning surplus into something wonderful.', 'अतिरिक्त भोजन को नेक काम में बदलने वाले समुदाय से जुड़ें।')}</p><div className="auth-story-stats"><span><b>12,450+</b> {t('meals rescued', 'भोजन बचाए')}</span><span><b>82</b> {t('verified partners', 'सत्यापित भागीदार')}</span></div></div><div className="auth-story-foot">FoodoraX · {t('Turning surplus into smiles.', 'अतिरिक्त भोजन से मुस्कान तक।')}</div></div>
@@ -141,10 +163,11 @@ function AuthPage({ mode, setUser }) {
         {register && <label>{t('Your name', 'आपका नाम')}<input name="name" placeholder={t('e.g. Priya Sharma', 'जैसे: प्रिया शर्मा')} value={form.name} onChange={update} autoComplete="name" required /></label>}
         <label>{t('Email address', 'ईमेल पता')}<input name="email" type="email" placeholder="you@example.com" value={form.email} onChange={update} autoComplete="email" required /></label>
         {register && <label>{t("I'm joining as", 'मैं जुड़ रहा/रही हूँ')}<select name="role" value={form.role} onChange={update}><option value="donor">{t('A food donor', 'खाद्य दाता')}</option><option value="ngo">{t('An NGO / recipient', 'NGO / प्राप्तकर्ता')}</option><option value="volunteer">{t('A volunteer pickup partner', 'वॉलिंटियर पिकअप पार्टनर')}</option></select></label>}
-        <label>{t('Password', 'पासवर्ड')}<input name="password" type="password" placeholder={register ? t('At least 8 characters', 'कम से कम 8 अक्षर') : t('Enter your password', 'अपना पासवर्ड डालें')} value={form.password} onChange={update} autoComplete={register ? 'new-password' : 'current-password'} minLength={8} required /></label>
+        <label>{t('Password', 'पासवर्ड')}<span className="password-field"><input name="password" type={showPassword ? 'text' : 'password'} placeholder={register ? t('At least 8 characters', 'कम से कम 8 अक्षर') : t('Enter your password', 'अपना पासवर्ड डालें')} value={form.password} onChange={update} autoComplete={register ? 'new-password' : 'current-password'} minLength={8} required /><button className="password-toggle" type="button" aria-label={showPassword ? t('Hide password', 'पासवर्ड छिपाएँ') : t('Show password', 'पासवर्ड दिखाएँ')} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span></label>
         {register && <><label>{t('Phone number', 'फ़ोन नंबर')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="phone" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={update} /></label><label>{t('WhatsApp number', 'व्हाट्सऐप नंबर')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="whatsappNumber" type="tel" placeholder="+91 98765 43210" value={form.whatsappNumber} onChange={update} /></label><label>{t('City', 'शहर')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="city" placeholder={t('Bengaluru', 'बेंगलुरु')} value={form.city} onChange={update} /></label><label>{t('Organization / pickup address', 'संस्था / पिकअप पता')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="address" placeholder={t('Area, city', 'इलाका, शहर')} value={form.address} onChange={update} /></label>{form.role === 'ngo' && <><label>{t('Meals your organization can use', 'आपकी संस्था को कितने भोजन चाहिए')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span><input name="quantityNeeded" type="number" min="0" placeholder="40" value={form.quantityNeeded} onChange={update} /></label><div className="category-preferences"><span>{t('Food preferences', 'भोजन की पसंद')} <span className="optional">{t('(optional)', '(वैकल्पिक)')}</span></span><div>{['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other'].map((category) => <label key={category}><input type="checkbox" checked={form.preferredCategories.includes(category)} onChange={(e) => setForm((old) => ({ ...old, preferredCategories: e.target.checked ? [...old.preferredCategories, category] : old.preferredCategories.filter((item) => item !== category) }))} />{category}</label>)}</div></div></>}<button type="button" className={`location-button ${located ? 'location-found' : ''}`} onClick={locateMe}><MapPin size={16} />{located ? t('Location added — nearby matches enabled', 'लोकेशन जुड़ गई — पास के विकल्प सक्रिय') : t('Use my current location for nearby matches', 'पास के विकल्पों के लिए वर्तमान लोकेशन लें')}</button></>}
         {error && <div className="form-error">{error}</div>}
         <button className="button button-dark auth-submit" disabled={busy}>{busy ? t('One moment…', 'एक क्षण…') : register ? t('Create my account', 'खाता बनाएँ') : t('Log in', 'लॉग इन')} <ArrowRight size={16} /></button>
+        {register && <button className="button button-outline demo-account-button" type="button" onClick={createDemoAccount} disabled={busy}>{busy ? t('Creating demo account…', 'डेमो खाता बनाया जा रहा है…') : t('Create a demo account', 'डेमो खाता बनाएँ')} <Sparkles size={16} /></button>}
       </form><div className="auth-switch">{register ? t('Already part of the movement?', 'पहले से हमारे साथ हैं?') : t('New to the movement?', 'हमसे पहली बार जुड़ रहे हैं?')} <Link to={register ? '/login' : '/register'}>{register ? t('Log in', 'लॉग इन') : t('Create an account', 'खाता बनाएँ')}</Link></div><div className="auth-safe"><ShieldCheck size={15} /> {t('Your details are safely encrypted.', 'आपकी जानकारी सुरक्षित रूप से एन्क्रिप्टेड है।')}</div></div></div></main>
 }
 
@@ -217,55 +240,27 @@ function DashboardLayout({ user, logout, children, active }) {
     setLanguage(next)
   }
   const items = user.role === 'admin' ? [['Overview', '/dashboard', Compass], ['Users', '/admin/users', Users], ['Donors', '/admin/donors', Gift], ['NGO verification', '/admin/ngos', ShieldCheck], ['Food listings', '/discover', Utensils], ['Audit log', '/admin/audit', ShieldCheck], ['My profile', '/profile', Users]] : user.role === 'donor' ? [['Overview', '/dashboard', Compass], ['My donations', '/dashboard?tab=donations', Gift], ['Add food', '/donate', Plus], ['My profile', '/profile', Users]] : [['Overview', '/dashboard', Compass], ['Find food', '/discover', Search], ['My pickups', '/dashboard?tab=pickups', PackageCheck], ['My profile', '/profile', Users]]
-  return <div className="dashboard-shell"><aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}><div className="sidebar-brand"><Brand light /><button className="icon-button sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X size={18} /></button></div><div className="sidebar-caption">{t('WORKSPACE', 'कार्यस्थल')}</div><nav className="sidebar-nav">{items.map(([label, path, Icon]) => <Link key={label} to={path} onClick={() => setMobileOpen(false)} className={active === label ? 'sidebar-active' : ''}><Icon size={18} />{t(label, ({ Overview: 'डैशबोर्ड', Users: 'उपयोगकर्ता', Donors: 'दाता', 'NGO verification': 'NGO सत्यापन', 'Food listings': 'खाद्य सूची', 'Audit log': 'ऑडिट लॉग', 'My profile': 'मेरी प्रोफ़ाइल', 'My donations': 'मेरे दान', 'Add food': 'खाना जोड़ें', 'Find food': 'खाना खोजें', 'My pickups': 'मेरी पिकअप' })[label] || label)}{label === 'NGO verification' && <span className="nav-count">!</span>}</Link>)}</nav><div className="sidebar-bottom"><div className="sidebar-help"><CircleHelp size={18} /><div><b>{t('Need a hand?', 'मदद चाहिए?')}</b><span>{t('We’re here for you', 'हम आपकी मदद के लिए हैं')}</span></div><ArrowUpRight size={14} /></div><button className="sidebar-user" onClick={() => navigate('/profile')}><span className="avatar sidebar-avatar">{user.name?.[0]?.toUpperCase()}</span><span><b>{user.name}</b><small>{user.role === 'ngo' ? t('Community partner', 'सामुदायिक भागीदार') : user.role === 'admin' ? t('Administrator', 'प्रशासक') : t('Food donor', 'खाद्य दाता')}</small></span><ChevronDown size={15} /></button><button className="sidebar-logout" onClick={logout}><LogOut size={15} /> {t('Log out', 'लॉग आउट')}</button></div></aside>
+  return <div className="dashboard-shell"><aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}><div className="sidebar-brand"><Brand light /><button className="icon-button sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X size={18} /></button></div><div className="sidebar-caption">{t('WORKSPACE', 'कार्यस्थल')}</div><nav className="sidebar-nav">{items.map(([label, path, Icon]) => <Link key={label} to={path} onClick={() => setMobileOpen(false)} className={active === label ? 'sidebar-active' : ''}><Icon size={18} />{t(label, ({ Overview: 'डैशबोर्ड', Users: 'उपयोगकर्ता', Donors: 'दाता', 'NGO verification': 'NGO सत्यापन', 'Food listings': 'खाद्य सूची', 'Audit log': 'ऑडिट लॉग', 'My profile': 'मेरी प्रोफ़ाइल', 'My donations': 'मेरे दान', 'Add food': 'खाना जोड़ें', 'Find food': 'खाना खोजें', 'My pickups': 'मेरी पिकअप' })[label] || label)}{label === 'NGO verification' && <span className="nav-count">!</span>}</Link>)}</nav><div className="sidebar-bottom"><div className="sidebar-help"><CircleHelp size={18} /><div><b>{t('Need a hand?', 'मदद चाहिए?')}</b><span>{t('We’re here for you', 'हम आपकी मदद के लिए हैं')}</span></div><ArrowUpRight size={14} /></div><button className="sidebar-user" onClick={() => navigate('/profile')}><span className="avatar sidebar-avatar">{user.name?.[0]?.toUpperCase()}</span><span><b>{user.name}</b><small>{user.role === 'ngo' ? t('Community partner', 'सामुदायिक भागीदार') : user.role === 'admin' ? t('Administrator', 'प्रशासक') : user.role === 'volunteer' ? t('Volunteer', 'वॉलिंटियर') : t('Food donor', 'खाद्य दाता')}</small></span><ChevronDown size={15} /></button><button className="sidebar-logout" onClick={logout}><LogOut size={15} /> {t('Log out', 'लॉग आउट')}</button></div></aside>
     <main className="dashboard-main"><header className="dashboard-topbar"><button className="icon-button dashboard-menu" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu /></button><span className="crumb">{t('Workspace', 'कार्यस्थल')} <span>/</span> {active}</span><div className="topbar-right"><button className="language-toggle" type="button" onClick={setLanguagePreference}><Languages size={15} />{language === 'en' ? 'हिन्दी' : 'English'}</button><NotificationCenter /><span className="topbar-date"><span className="live-dot" /> {t('All systems growing', 'सभी सिस्टम सक्रिय हैं')}</span><span className="topbar-avatar">{user.name?.[0]?.toUpperCase()}</span></div></header><div className="dashboard-content">{children}</div></main></div>
 }
 
-function ProfilePage({ user, setUser, logout }) {
-  const [form, setForm] = useState({
-    name: user.name || '', phone: user.phone || '', whatsappNumber: user.whatsappNumber || '', city: user.city || '', address: user.address || '',
-    preferredCategories: user.preferredCategories || [], quantityNeeded: user.quantityNeeded || 0,
-  })
-  const [location, setLocation] = useState(user.location?.coordinates || [])
-  const [message, setMessage] = useState('')
+function ProfilePage({ user, logout }) {
+  const [ratingInfo, setRatingInfo] = useState(null)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const categories = ['Prepared meals', 'Bakery', 'Produce', 'Dairy', 'Packaged food', 'Other']
   useEffect(() => {
     api.get(`/users/${user.id || user._id}/profile`).then(({ data }) => setRatingInfo(data)).catch((err) => setError(getErrorMessage(err)))
   }, [user.id, user._id])
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) return setError('Location is not supported by this browser.')
-    navigator.geolocation.getCurrentPosition(({ coords }) => {
-      setLocation([coords.longitude, coords.latitude])
-      setError('')
-    }, () => setError('Could not access your location. Check browser location permission and try again.'), { enableHighAccuracy: true, timeout: 10000 })
-  }
-  const submit = async (event) => {
-    event.preventDefault()
-    setBusy(true); setError(''); setMessage('')
-    try {
-      const { data } = await api.patch('/auth/me', {
-        ...form,
-        quantityNeeded: Number(form.quantityNeeded),
-        location: { type: 'Point', coordinates: location },
-      })
-      setUser(data.user)
-      setMessage(data.message)
-    } catch (err) { setError(getErrorMessage(err)) } finally { setBusy(false) }
-  }
-  return <DashboardLayout user={user} logout={logout} active="My profile"><div className="dashboard-title-row"><div><div className="eyebrow">YOUR COMMUNITY PROFILE</div><h1>{t('Account details.', 'खाता विवरण')}</h1><p>{t('Keep your contact, location and donation preferences current.', 'अपनी संपर्क जानकारी, लोकेशन और पसंद अपडेट रखें।')}</p></div></div>
+  return <DashboardLayout user={user} logout={logout} active="My profile"><div className="dashboard-title-row"><div><div className="eyebrow">YOUR COMMUNITY PROFILE</div><h1>{t('Account details.', 'खाता विवरण')}</h1></div></div>
+    <section className="dashboard-panel profile-details" aria-label={t('Profile details', 'प्रोफ़ाइल विवरण')}>
+      <dl>
+        <div><dt>{t('Name', 'नाम')}</dt><dd>{user.name || '—'}</dd></div>
+        <div><dt>{t('Email', 'ईमेल')}</dt><dd>{user.email || '—'}</dd></div>
+        <div><dt>{t('Phone number', 'फ़ोन नंबर')}</dt><dd>{user.phone || '—'}</dd></div>
+        <div><dt>{t('Address', 'पता')}</dt><dd>{user.address || '—'}</dd></div>
+      </dl>
+    </section>
     {ratingInfo && <section className="dashboard-panel profile-rating"><div><span className="eyebrow">COMMUNITY FEEDBACK</span><h2><Star size={20} fill="currentColor" /> {ratingInfo.rating.averageRating ? ratingInfo.rating.averageRating.toFixed(1) : '—'} / 5</h2><p>{ratingInfo.rating.reviewCount} completed-donation reviews</p></div><div className="profile-reviews">{ratingInfo.reviews.map((review) => <article key={review._id}><b>{review.reviewer?.name}</b><span>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span><p>{review.comment || 'No written comment.'}</p></article>)}</div></section>}
-    <form className="donation-form" onSubmit={submit}><div className="form-grid">
-      <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required minLength="2" maxLength="100" /></label>
-      <label>Email<input value={user.email} disabled /></label>
-      <label>Phone<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} maxLength="30" /></label>
-      <label>WhatsApp number<input value={form.whatsappNumber} onChange={(e) => setForm({ ...form, whatsappNumber: e.target.value })} maxLength="30" /></label>
-      <label>City<input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} maxLength="80" /></label>
-      <label>Organization / pickup address<input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} maxLength="240" /></label>
-      {user.role === 'ngo' && <><label>Meals your organization needs<input type="number" min="0" max="100000" value={form.quantityNeeded} onChange={(e) => setForm({ ...form, quantityNeeded: e.target.value })} /></label><div className="category-preferences"><span>Preferred food categories</span><div>{categories.map((category) => <label key={category}><input type="checkbox" checked={form.preferredCategories.includes(category)} onChange={(e) => setForm((old) => ({ ...old, preferredCategories: e.target.checked ? [...old.preferredCategories, category] : old.preferredCategories.filter((item) => item !== category) }))} />{category}</label>)}</div></div></>}
-    </div><section className="form-section"><h2>Nearby location</h2><p>Coordinates are used to estimate food pickup distances and nearby matches.</p><p>{location.length === 2 ? `Location saved (${location[1].toFixed(4)}, ${location[0].toFixed(4)})` : 'No location saved'}</p><button className="button button-outline" type="button" onClick={useCurrentLocation}><Navigation size={15} /> Use my current location</button><button className="table-action" type="button" onClick={() => setLocation([])}>Clear location</button></section>
-    {error && <div className="form-error">{error}</div>}{message && <div className="form-success"><CheckCircle2 size={17} />{message}</div>}<button className="button button-dark" disabled={busy}>{busy ? 'Saving…' : 'Save profile'} <ArrowRight size={15} /></button></form>
+    {error && <div className="form-error">{error}</div>}
   </DashboardLayout>
 }
 
@@ -303,8 +298,9 @@ function PublicProfilePage({ user, logout }) {
   useEffect(() => {
     api.get(`/users/${id}/profile`).then(({ data: result }) => setData(result)).catch((err) => setError(getErrorMessage(err)))
   }, [id])
+  const roleLabel = data?.profile.role === 'ngo' ? 'Community partner' : data?.profile.role === 'volunteer' ? 'Volunteer' : 'Food donor'
   return <DashboardLayout user={user} logout={logout} active="Community profile">
-    <div className="dashboard-title-row"><div><div className="eyebrow">FOODORAX COMMUNITY</div><h1>{data?.profile.name || 'Community profile'}</h1><p>{data ? `${data.profile.role === 'ngo' ? 'Verified community partner' : 'Food donor'} · ${data.profile.address || 'Local community'}` : 'Reviews are available after completed donations.'}</p></div><Link className="button button-outline" to="/discover">Back to nearby food</Link></div>
+    <div className="dashboard-title-row"><div><div className="eyebrow">FOODORAX COMMUNITY</div><h1>{data?.profile.name || 'Community profile'}</h1><p>{data ? `${roleLabel}${data.profile.verified ? ' · Verified' : ''} · ${data.profile.city || data.profile.address || 'Local community'}` : 'Reviews are available after completed donations.'}</p></div><Link className="button button-outline" to="/discover">Back to nearby food</Link></div>
     {error && <div className="inline-error">{error}</div>}
     {data && <section className="dashboard-panel profile-rating"><div><span className="eyebrow">COMMUNITY FEEDBACK</span><h2><Star size={20} fill="currentColor" /> {data.rating.averageRating ? data.rating.averageRating.toFixed(1) : '—'} / 5</h2><p>{data.rating.reviewCount} completed-donation reviews</p></div><div className="profile-reviews">{data.reviews.map((review) => <article key={review._id}><b>{review.reviewer?.name}</b><span>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span><p>{review.comment || 'No written comment.'}</p></article>)}{!data.reviews.length && <p>No reviews have been shared yet.</p>}</div></section>}
   </DashboardLayout>
@@ -788,7 +784,7 @@ export default function App() {
       <Route path="/donate" element={<Protected user={user} loading={loading}>{user?.role === 'donor' ? <DonatePage user={user} logout={logout} /> : <Navigate to="/dashboard" replace />}</Protected>} />
       <Route path="/discover" element={<Protected user={user} loading={loading}><DiscoverPage user={user} logout={logout} /></Protected>} />
       <Route path="/community/:id" element={<Protected user={user} loading={loading}><PublicProfilePage user={user} logout={logout} /></Protected>} />
-      <Route path="/profile" element={<Protected user={user} loading={loading}><ProfilePage user={user} setUser={setUser} logout={logout} /></Protected>} />
+      <Route path="/profile" element={<Protected user={user} loading={loading}><ProfilePage user={user} logout={logout} /></Protected>} />
       <Route path="/admin/users" element={<Protected user={user} loading={loading}><AdminOnly user={user}><AdminUsersPage user={user} logout={logout} /></AdminOnly></Protected>} />
       <Route path="/admin/donors" element={<Protected user={user} loading={loading}><AdminOnly user={user}><AdminDonorsPage user={user} logout={logout} /></AdminOnly></Protected>} />
       <Route path="/admin/ngos" element={<Protected user={user} loading={loading}><AdminOnly user={user}><AdminNgosPage user={user} logout={logout} /></AdminOnly></Protected>} />

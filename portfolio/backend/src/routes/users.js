@@ -11,7 +11,7 @@ router.get('/', authenticate, authorize('admin'), asyncHandler(async (_req, res)
 }))
 
 router.get('/:id/profile', authenticate, asyncHandler(async (req, res) => {
-  const member = await User.findById(req.params.id).select('name role address verified createdAt')
+  const member = await User.findById(req.params.id).select('name role address city volunteer verified createdAt')
   if (!member) return res.status(404).json({ message: 'Profile not found.' })
   const [summary, reviews] = await Promise.all([
     Review.aggregate([

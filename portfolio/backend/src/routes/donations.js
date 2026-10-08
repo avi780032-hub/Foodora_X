@@ -24,6 +24,12 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
   res.json({ donations: response })
 }))
 
+router.get('/volunteers', authenticate, asyncHandler(async (req, res) => {
+  const cityFilter = req.query.city ? { city: new RegExp(`^${String(req.query.city).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } : {}
+  const volunteers = await User.find({ role: 'volunteer', active: true, ...cityFilter }).select('name email phone whatsappNumber city volunteer').sort({ name: 1 })
+  res.json({ volunteers })
+}))
+
 router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   const donation = await populateDonation(Donation.findById(req.params.id).select('+verificationCode'))
   if (!donation) return res.status(404).json({ message: 'Donation not found.' })
@@ -33,12 +39,6 @@ router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   const item = donation.toObject()
   if (String(donation.donor._id) !== String(req.user._id) && req.user.role !== 'admin') delete item.verificationCode
   res.json({ donation: item })
-}))
-
-router.get('/volunteers', authenticate, asyncHandler(async (req, res) => {
-  const cityFilter = req.query.city ? { city: new RegExp(`^${String(req.query.city).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } : {}
-  const volunteers = await User.find({ role: 'volunteer', active: true, ...cityFilter }).select('name email phone whatsappNumber city volunteer').sort({ name: 1 })
-  res.json({ volunteers })
 }))
 
 router.patch('/:id/assign-volunteer', authenticate, [

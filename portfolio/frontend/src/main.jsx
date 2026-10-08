@@ -7,6 +7,7 @@ import './index.css'
 import './features.css'
 import './print.css'
 import './community.css'
+import './auth-controls.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
