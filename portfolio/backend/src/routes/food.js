@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import Food from '../models/Food.js'
+import FoodRequest from '../models/FoodRequest.js'
 import Donation from '../models/Donation.js'
 import User from '../models/User.js'
 import { authenticate, authorize } from '../middleware/auth.js'
@@ -41,12 +42,42 @@ const distanceKm = (a, b) => {
   return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
 }
 
+router.get('/available', [
+  query('category').optional({ values: 'falsy' }).isIn(categories).withMessage('Choose a valid food category.'),
+  query('minQuantity').optional({ values: 'falsy' }).isFloat({ min: 1 }).withMessage('Minimum quantity must be positive.'),
+], asyncHandler(async (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid food filters.', errors: validationError(errors) })
+  const now = new Date()
+  const filter = { status: { $in: ['listed', 'Listed'] }, expiryTime: { $gt: now } }
+  if (req.query.category) filter.category = req.query.category
+  if (req.query.minQuantity) filter.quantity = { $gte: Number(req.query.minQuantity) }
+  if (req.query.search) {
+    const escaped = req.query.search.trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (escaped) filter.$or = [{ name: new RegExp(escaped, 'i') }, { description: new RegExp(escaped, 'i') }, { city: new RegExp(escaped, 'i') }, { state: new RegExp(escaped, 'i') }]
+  }
+  const foods = await Food.find(filter)
+    .populate('donor', 'name verified address city')
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean()
+  const formattedFoods = foods.map((f) => ({
+    ...f,
+    title: f.name,
+    location: f.location?.label || f.address || f.city || 'Local area',
+  }))
+  if (req.query.envelope === 'true') {
+    return res.json({ foods: formattedFoods })
+  }
+  res.json(formattedFoods)
+}))
+
 router.get('/', authenticate, [
   query('minQuantity').optional().isFloat({ min: 1 }).withMessage('Minimum quantity must be positive.'),
 ], asyncHandler(async (req, res) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid food filters.', errors: validationError(errors) })
-  const filter = {}
+  const filter = { demoOnly: { $ne: true } }
   const validStatuses = ['listed', 'matched', 'accepted', 'pickup_started', 'delivered', 'cancelled']
   if (req.query.mine === 'true') {
     if (req.user.role !== 'donor' && req.user.role !== 'admin') return res.status(403).json({ message: 'Only donors can view their own food listings.' })
@@ -58,10 +89,14 @@ router.get('/', authenticate, [
   } else if (req.user.role === 'donor') {
     filter.donor = req.user._id
   } else if (req.user.role !== 'admin') {
-    filter.status = 'listed'
+    filter.status = { $in: ['listed', 'Listed'] }
   }
   if (filter.status === 'listed' || filter.status?.$in?.includes('listed')) {
-    filter.expiryTime = { $gt: new Date() }
+    const now = new Date()
+    filter.expiryTime = { $gt: now }
+  }
+  if (req.query.includeDemo === 'true') {
+    delete filter.demoOnly
   }
   if (req.query.category) {
     if (!categories.includes(req.query.category)) return res.status(400).json({ message: 'Choose a valid food category.' })
@@ -76,11 +111,16 @@ router.get('/', authenticate, [
     if (escaped) filter.$or = [{ name: new RegExp(escaped, 'i') }, { description: new RegExp(escaped, 'i') }, { address: new RegExp(escaped, 'i') }]
   }
   const foods = await Food.find(filter)
-    .populate('donor', 'name verified address')
-    .sort({ pickupTime: 1 })
+    .populate('donor', 'name verified address city')
+    .sort({ createdAt: -1 })
     .limit(100)
     .lean()
-  res.json({ foods })
+  const formattedFoods = foods.map((f) => ({
+    ...f,
+    title: f.name,
+    location: f.location?.label || f.address || f.city || 'Local area',
+  }))
+  res.json({ foods: formattedFoods })
 }))
 
 router.get('/recommendations', authenticate, authorize('ngo'), [
@@ -92,7 +132,11 @@ router.get('/recommendations', authenticate, authorize('ngo'), [
   if (req.query.minDistanceKm !== undefined && req.query.maxDistanceKm !== undefined && Number(req.query.maxDistanceKm) < Number(req.query.minDistanceKm)) {
     return res.status(400).json({ message: 'Maximum distance must be greater than or equal to minimum distance.' })
   }
-  const filter = { status: 'listed', expiryTime: { $gt: new Date() } }
+  const now = new Date()
+  const filter = { status: { $in: ['listed', 'Listed'] }, donor: { $ne: req.user._id }, expiryTime: { $gt: now } }
+  if (req.query.includeDemo !== 'true') {
+    filter.demoOnly = { $ne: true }
+  }
   if (req.query.category) {
     if (!categories.includes(req.query.category)) return res.status(400).json({ message: 'Choose a valid food category.' })
     filter.category = req.query.category
@@ -114,11 +158,11 @@ router.get('/recommendations', authenticate, authorize('ngo'), [
     .sort({ pickupTime: 1 })
     .limit(100)
     .lean()
-  const now = Date.now()
+  const currentTime = Date.now()
   const recommended = foods.map((food) => {
     const distance = distanceKm(req.user.location, food.location)
     const quantity = Number(food.quantity)
-    const hoursLeft = Math.max(0, (new Date(food.expiryTime).getTime() - now) / 36e5)
+    const hoursLeft = Math.max(0, (new Date(food.expiryTime).getTime() - currentTime) / 36e5)
     const quantityScore = req.user.quantityNeeded > 0
       ? Math.max(0, 25 - Math.min(25, Math.abs(quantity - req.user.quantityNeeded) / req.user.quantityNeeded * 25))
       : Math.min(quantity, 25)
@@ -136,7 +180,7 @@ router.get('/recommendations', authenticate, authorize('ngo'), [
   res.json({ foods: recommended })
 }))
 
-router.post('/upload-image', authenticate, authorize('donor'), (req, res, next) => {
+router.post('/upload-image', authenticate, authorize('donor', 'ngo'), (req, res, next) => {
   imageUpload.single('image')(req, res, (error) => {
     if (error instanceof multer.MulterError || error?.code === 'INVALID_IMAGE_TYPE') {
       return res.status(400).json({ message: error.message })
@@ -147,24 +191,33 @@ router.post('/upload-image', authenticate, authorize('donor'), (req, res, next) 
   })
 })
 
-router.post('/', authenticate, authorize('donor'), [
+router.post('/', authenticate, (req, res, next) => {
+  if (req.user.role === 'donor' || (req.user.role === 'ngo' && req.body.foodRequest)) return next()
+  return res.status(403).json({ message: 'Only donors can publish food, and NGOs can only offer food to an open request.' })
+}, [
   body('name').trim().isLength({ min: 2, max: 120 }).withMessage('Food name must be 2–120 characters.'),
   body('category').isIn(categories).withMessage('Choose a valid food category.'),
   body('quantity').isInt({ min: 1 }).withMessage('Quantity must be a whole number greater than zero.'),
   body('quantityUnit').optional().isIn(['meals', 'kg', 'boxes', 'portions']).withMessage('Choose a valid quantity unit.'),
   body('description').optional().isLength({ max: 1000 }).withMessage('Description cannot exceed 1000 characters.'),
-  body('image').optional({ values: 'falsy' }).isURL({ protocols: ['http', 'https'], require_protocol: true }).withMessage('Food image must be a valid HTTP or HTTPS URL.'),
+  body('state').optional({ values: 'falsy' }).trim().isLength({ max: 80 }).withMessage('State is too long.'),
+  body('image').optional({ values: 'falsy' }).isURL({ protocols: ['http', 'https'], require_protocol: true, require_tld: false }).withMessage('Food image must be a valid HTTP or HTTPS URL.'),
+  body('foodRequest').optional({ values: 'falsy' }).isMongoId().withMessage('Choose a valid food request.'),
   body('address').trim().isLength({ min: 3, max: 240 }).withMessage('Enter a pickup address.'),
   body('preparedAt').isISO8601().withMessage('Enter a valid preparation time.'),
   body('pickupTime').isISO8601().withMessage('Enter a valid pickup time.'),
   body('expiryTime').isISO8601().withMessage('Enter a valid expiry time.'),
 ], asyncHandler(async (req, res) => {
+  if (req.user.role === 'ngo' && !req.user.verified) {
+    return res.status(403).json({ message: 'Your organization must be verified before offering food to a request.' })
+  }
   const errors = validationResult(req)
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Please check the food listing details.', errors: validationError(errors) })
   const { name, category, quantity, quantityUnit, description, image, address, preparedAt, pickupTime, expiryTime, location, safetyChecklist } = req.body
   const donorCity = req.user.city || ''
+  const state = typeof req.body.state === 'string' ? req.body.state.trim() : ''
   const preparation = new Date(preparedAt), pickup = new Date(pickupTime), expiry = new Date(expiryTime), now = new Date()
-  if (preparation > now || pickup < now || preparation > pickup || expiry <= pickup) {
+  if (preparation >= now || pickup <= now || preparation >= pickup || expiry <= pickup) {
     return res.status(400).json({ message: 'Preparation must be in the past and before pickup; pickup must be in the future and expiry must be after pickup.' })
   }
   const safetyKeys = ['edible', 'stored', 'uncontaminated', 'preparationTimeEntered', 'expiryTimeEntered']
@@ -185,27 +238,97 @@ router.post('/', authenticate, authorize('donor'), [
     }
     validatedLocation = { type: 'Point', coordinates: [longitude, latitude] }
   }
-  const food = await Food.create({
-    donor: req.user._id, name, category, quantity, quantityUnit, description, image,
-    city: donorCity,
-    address, preparedAt: preparation, pickupTime: pickup, expiryTime: expiry, safetyChecklist, location: validatedLocation,
-  })
+  let foodRequest
+  let food
+  if (req.body.foodRequest) {
+    foodRequest = await FoodRequest.findOne({
+      _id: req.body.foodRequest,
+      status: 'open',
+      $or: [{ neededBy: null }, { neededBy: { $gt: new Date() } }],
+    })
+    if (!foodRequest) return res.status(409).json({ message: 'This food request is no longer open.' })
+    if (String(foodRequest.requester) === String(req.user._id)) {
+      return res.status(400).json({ message: 'Your organization cannot fulfill its own food request.' })
+    }
+    if (category !== foodRequest.category || quantityUnit !== foodRequest.quantityUnit || Number(quantity) < foodRequest.quantity) {
+      return res.status(400).json({ message: 'To fulfill this request, provide the requested category and unit, and at least the requested quantity.' })
+    }
+    if (foodRequest.neededBy && pickup > foodRequest.neededBy) {
+      return res.status(400).json({ message: 'Pickup must be before the recipient’s needed-by time.' })
+    }
+    food = new Food({
+      donor: req.user._id, foodRequest: foodRequest._id, name, category, quantity, quantityUnit, description, image,
+      city: donorCity, state,
+      address, preparedAt: preparation, pickupTime: pickup, expiryTime: expiry, safetyChecklist, location: validatedLocation,
+    })
+    const reserved = await FoodRequest.findOneAndUpdate(
+      { _id: foodRequest._id, status: 'open', $or: [{ neededBy: null }, { neededBy: { $gt: new Date() } }] },
+      { $set: { status: 'matched', fulfilledFood: food._id } },
+      { new: true },
+    )
+    if (!reserved) return res.status(409).json({ message: 'Another donor has already responded to this food request.' })
+    try {
+      await food.save()
+    } catch (error) {
+      await FoodRequest.updateOne(
+        { _id: foodRequest._id, status: 'matched', fulfilledFood: food._id },
+        { $set: { status: 'open' }, $unset: { fulfilledFood: 1 } },
+      )
+      throw error
+    }
+  } else {
+    food = await Food.create({
+      donor: req.user._id, name, category, quantity, quantityUnit, description, image,
+      city: donorCity, state,
+      address, preparedAt: preparation, pickupTime: pickup, expiryTime: expiry, safetyChecklist, location: validatedLocation,
+    })
+  }
   const populated = await food.populate('donor', 'name verified address')
   req.app.get('io').emit('food:updated', { foodId: String(food._id), status: food.status })
+  if (food.foodRequest) req.app.get('io').emit('food-request:updated', { requestId: String(food.foodRequest), status: 'matched' })
   res.status(201).json({ message: 'Food listing published successfully.', food: populated })
 }))
 
-router.patch('/:id/status', authenticate, authorize('donor'), [
-  body('status').equals('cancelled').withMessage('A donor can cancel an unclaimed listing.'),
+router.patch('/:id/status', authenticate, authorize('donor', 'ngo'), [
+  body('status').isIn(['listed', 'cancelled']).withMessage('Choose a valid listing status.'),
 ], asyncHandler(async (req, res) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg })
+  if (req.body.status === 'listed') {
+    if (await Donation.exists({ food: req.params.id })) {
+      return res.status(409).json({ message: 'This listing has a donation history and cannot be reactivated. Create a new listing instead.' })
+    }
+    const now = new Date()
+    const food = await Food.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        donor: req.user._id,
+        status: 'cancelled',
+        demoOnly: { $ne: true },
+        pickupTime: { $gt: now },
+        expiryTime: { $gt: now },
+      },
+      { $set: { status: 'listed' } },
+      { new: true },
+    )
+    if (!food) return res.status(409).json({ message: 'This listing cannot be reactivated. It must be cancelled, have no expired pickup or expiry time, and belong to you.' })
+    req.app.get('io').emit('food:updated', { foodId: String(food._id), status: food.status })
+    return res.json({ message: 'Food listing reactivated.', food })
+  }
   const food = await Food.findOneAndUpdate(
-    { _id: req.params.id, donor: req.user._id, status: 'listed' },
+    { _id: req.params.id, donor: req.user._id, status: 'listed', demoOnly: { $ne: true } },
     { $set: { status: 'cancelled' } },
     { new: true },
   )
   if (!food) return res.status(409).json({ message: 'Only your unclaimed food listings can be cancelled.' })
+  if (food.foodRequest) {
+    await FoodRequest.updateOne(
+      { _id: food.foodRequest, fulfilledFood: food._id, status: 'matched' },
+      { $set: { status: 'open' }, $unset: { fulfilledFood: 1 } },
+    )
+    await Food.updateOne({ _id: food._id }, { $unset: { foodRequest: 1 } })
+    req.app.get('io').emit('food-request:updated', { requestId: String(food.foodRequest), status: 'open' })
+  }
   req.app.get('io').emit('food:updated', { foodId: String(food._id), status: food.status })
   res.json({ message: 'Food listing cancelled.', food })
 }))
@@ -213,7 +336,8 @@ router.patch('/:id/status', authenticate, authorize('donor'), [
 router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   const food = await Food.findById(req.params.id).populate('donor', 'name verified address')
   if (!food) return res.status(404).json({ message: 'Food listing not found.' })
-  if (food.status !== 'listed' && req.user.role !== 'admin' && String(food.donor._id) !== String(req.user._id)) {
+  if ((food.demoOnly || food.status !== 'listed') && req.user.role !== 'admin' && String(food.donor._id) !== String(req.user._id)) {
+    if (food.demoOnly) return res.status(403).json({ message: 'Demo listings are samples and cannot be claimed.' })
     const donation = await Donation.findOne({ food: food._id, recipient: req.user._id })
     if (!donation) return res.status(403).json({ message: 'This listing is no longer available.' })
   }
@@ -223,7 +347,7 @@ router.get('/:id', authenticate, asyncHandler(async (req, res) => {
 router.post('/:id/accept', authenticate, authorize('ngo'), asyncHandler(async (req, res) => {
   if (!req.user.verified) return res.status(403).json({ message: 'Your NGO must be verified before accepting food.' })
   const food = await Food.findOneAndUpdate(
-    { _id: req.params.id, status: 'listed', expiryTime: { $gt: new Date() } },
+    { _id: req.params.id, donor: { $ne: req.user._id }, status: 'listed', demoOnly: { $ne: true }, expiryTime: { $gt: new Date() } },
     { $set: { status: 'accepted' } },
     { new: true },
   ).populate('donor', 'name verified address')

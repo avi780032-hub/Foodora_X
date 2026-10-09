@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { body, param, validationResult } from 'express-validator'
 import User from '../models/User.js'
 import Food from '../models/Food.js'
+import FoodRequest from '../models/FoodRequest.js'
 import Donation from '../models/Donation.js'
 import { authenticate, authorize } from '../middleware/auth.js'
 import { asyncHandler, emitDonation } from '../utils/http.js'
@@ -84,6 +85,14 @@ router.patch('/food/:id/status', [
     { new: true },
   )
   if (!food) return res.status(409).json({ message: 'This food listing is already complete, cancelled, or unavailable.' })
+  if (food.foodRequest) {
+    await FoodRequest.updateOne(
+      { _id: food.foodRequest, fulfilledFood: food._id, status: 'matched' },
+      { $set: { status: 'open' }, $unset: { fulfilledFood: 1 } },
+    )
+    await Food.updateOne({ _id: food._id }, { $unset: { foodRequest: 1 } })
+    req.app.get('io').emit('food-request:updated', { requestId: String(food.foodRequest), status: 'open' })
+  }
   const donation = await Donation.findOneAndUpdate(
     { food: food._id, status: { $in: ['accepted', 'pickup_started'] } },
     { $set: { status: 'cancelled' } },

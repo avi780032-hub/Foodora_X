@@ -90,6 +90,14 @@ Vercel hosts the frontend; deploy the Express backend separately to a Node.js ho
 
 Vite embeds `VITE_*` values at build time, so redeploy the frontend after changing them. Check `https://<your-backend-host>/api/health` returns `{"status":"ok","service":"FoodoraX API"}` before testing login. Do not use `localhost` as the Vercel API URL: it refers to the visitor's own computer.
 
+To add clearly labeled sample listings near Cholapur and Varanasi for a demo, set the backend's `MONGO_URI` and `JWT_SECRET`, then run this from `portfolio/backend`:
+
+```powershell
+npm run seed:demo
+```
+
+The script is safe to run again: it updates its sample records rather than duplicating them. Demo listings include Uttar Pradesh city/state labels and are visible on public Explore, but are marked as samples and cannot be claimed. Do not present them as real food donations.
+
 ## Demo walkthrough
 
 1. Register a **donor** account and optionally use the location button to attach nearby coordinates.
@@ -100,6 +108,8 @@ Vite embeds `VITE_*` values at build time, so redeploy the frontend after changi
 6. Accept a listing. The NGO gets a one-time six-digit pickup code; the donor can see it in the donation tracker.
 7. The NGO starts pickup and enters the code provided by the donor. A correct code marks the donation delivered.
 8. Both participants receive real-time Socket.io notifications. Admin analytics recalculate from saved MongoDB users, food listings, and completed donations.
+
+NGOs can also post free food requests from **My requests**. Donors and other NGOs can browse open requests, offer the requested category and quantity, and publish a listing for the requesting NGO to accept through the existing pickup-code flow. NGO-to-NGO offers are allowed, but organizations cannot fulfill their own requests. A request is marked fulfilled after delivery; cancelling an unclaimed offer reopens the request.
 
 ## Main API
 
@@ -117,6 +127,9 @@ All endpoints are prefixed with `/api`. Authenticated routes accept `Authorizati
 | GET | `/food/:id` | View a listing |
 | PATCH | `/food/:id/status` | Donor cancels an unclaimed listing |
 | POST | `/food/:id/accept` | Accept as a verified NGO; creates a pickup code |
+| GET, POST | `/food-requests` | Browse open NGO requests as a donor or NGO / create a free request as an NGO |
+| GET | `/food-requests/:id` | View an open request as a donor or your request as an NGO |
+| PATCH | `/food-requests/:id/cancel` | Cancel your open NGO request |
 | GET | `/donations` | Participant donation history |
 | GET | `/donations/:id` | Participant donation detail |
 | PATCH | `/donations/:id/status` | NGO starts pickup |

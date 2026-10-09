@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { body, validationResult } from 'express-validator'
 import Donation from '../models/Donation.js'
 import Food from '../models/Food.js'
+import FoodRequest from '../models/FoodRequest.js'
 import User from '../models/User.js'
 import { authenticate, authorize } from '../middleware/auth.js'
 import { asyncHandler, emitDonation, validationError } from '../utils/http.js'
@@ -126,6 +127,13 @@ router.patch('/:id/verify', authenticate, authorize('ngo'), [
   donation.deliveredAt = new Date()
   await donation.save()
   await Food.updateOne({ _id: donation.food._id }, { $set: { status: 'delivered' } })
+  if (donation.food.foodRequest) {
+    await FoodRequest.updateOne(
+      { _id: donation.food.foodRequest, fulfilledFood: donation.food._id, status: 'matched' },
+      { $set: { status: 'fulfilled' } },
+    )
+    req.app.get('io').emit('food-request:updated', { requestId: String(donation.food.foodRequest), status: 'fulfilled' })
+  }
   await emitDonation(req.app.get('io'), donation, `${donation.food.name} was delivered. Thank you for making a difference!`)
   res.json({ message: 'Pickup verified. This food donation is now delivered!', donation })
 }))

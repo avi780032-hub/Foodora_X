@@ -10,6 +10,7 @@ import { connectDatabase } from './config/db.js'
 import User from './models/User.js'
 import authRoutes from './routes/auth.js'
 import foodRoutes from './routes/food.js'
+import foodRequestRoutes from './routes/foodRequests.js'
 import donationRoutes from './routes/donations.js'
 import userRoutes from './routes/users.js'
 import adminRoutes from './routes/admin.js'
@@ -41,6 +42,7 @@ app.use('/uploads', express.static(path.resolve(uploadsDirectory), { dotfiles: '
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'FoodoraX API' }))
 app.use('/api/auth', authRoutes)
 app.use('/api/food', foodRoutes)
+app.use('/api/food-requests', foodRequestRoutes)
 app.use('/api/donations', donationRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/admin', adminRoutes)
